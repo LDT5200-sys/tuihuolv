@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三代秘纤 · 退货率复盘中控台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0d1117; --bg2:#131a24; --panel:#161d28; --panel2:#1c2533;
+  --line:#27313f; --line2:#323d4d;
+  --ink:#e6edf3; --ink2:#9aa7b8; --ink3:#67748a;
+  --amber:#f0a020; --red:#f0533d; --green:#3fb950; --blue:#4aa3df;
+  --accent:#f0a020;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --disp:'Oswald','PingFang SC','Microsoft YaHei',sans-serif;
+  --cjk:'PingFang SC','Microsoft YaHei','Hiragino Sans GB',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(240,160,32,.06), transparent 60%),
+    radial-gradient(700px 500px at 0% 0%, rgba(74,163,223,.05), transparent 55%),
+    var(--bg);
+  color:var(--ink); font-family:var(--cjk); font-size:14px; line-height:1.5;
+  min-height:100vh; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1320px;margin:0 auto;padding:0 22px 80px}
+/* header */
+header{position:sticky;top:0;z-index:30;background:rgba(13,17,23,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);}
+.hin{max-width:1320px;margin:0 auto;padding:14px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:11px}
+.logo .mk{width:30px;height:30px;border:1.5px solid var(--accent);position:relative;transform:rotate(45deg);flex:0 0 auto}
+.logo .mk::after{content:"";position:absolute;inset:5px;background:var(--accent)}
+.logo h1{font-family:var(--disp);font-weight:600;font-size:18px;letter-spacing:.06em;text-transform:uppercase}
+.logo .sub{font-family:var(--mono);font-size:10.5px;color:var(--ink3);letter-spacing:.12em;margin-top:1px}
+.hspacer{flex:1}
+.tgt{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--ink2);background:var(--panel);border:1px solid var(--line);padding:7px 12px;border-radius:8px}
+.tgt input{width:46px;background:var(--bg);border:1px solid var(--line2);color:var(--accent);font-family:var(--mono);font-weight:700;font-size:13px;text-align:center;border-radius:5px;padding:3px 2px}
+.tgt input:focus{outline:1px solid var(--accent)}
+.badge{font-family:var(--mono);font-size:10px;color:var(--ink3);border:1px solid var(--line);padding:4px 8px;border-radius:20px;letter-spacing:.08em}
+
+/* upload */
+.uploads{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:26px}
+@media(max-width:860px){.uploads{grid-template-columns:1fr}}
+.drop{background:var(--panel);border:1.5px dashed var(--line2);border-radius:12px;padding:18px;cursor:pointer;transition:.18s;position:relative;overflow:hidden}
+.drop:hover{border-color:var(--accent);background:var(--panel2)}
+.drop.over{border-color:var(--accent);background:rgba(240,160,32,.07)}
+.drop.ok{border-style:solid;border-color:rgba(63,185,80,.5)}
+.drop .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;color:var(--ink3);text-transform:uppercase}
+.drop .ttl{font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:.03em;margin:6px 0 3px;color:var(--ink)}
+.drop .opt{color:var(--ink3);font-size:11px}
+.drop .state{margin-top:10px;font-family:var(--mono);font-size:11.5px;color:var(--ink2);min-height:16px;word-break:break-all}
+.drop .state.good{color:var(--green)}
+.drop .state.err{color:var(--red)}
+.drop .pct{position:absolute;left:0;bottom:0;height:3px;background:var(--accent);width:0;transition:width .2s}
+
+/* sections */
+section{margin-top:30px}
+.shead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.shead h2{font-family:var(--disp);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink)}
+.shead .ln{flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+.note{font-family:var(--mono);font-size:11px;color:var(--ink3)}
+
+/* kpi */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+@media(max-width:960px){.kpis{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.kpis{grid-template-columns:1fr}}
+.kpi{background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:12px;padding:16px 17px;position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ink3)}
+.kpi.hot::before{background:var(--red)}.kpi.warn::before{background:var(--amber)}.kpi.good::before{background:var(--green)}.kpi.info::before{background:var(--blue)}
+.kpi .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--ink2);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center}
+.kpi .v{font-family:var(--mono);font-weight:700;font-size:34px;line-height:1.05;margin-top:10px;letter-spacing:-.01em}
+.kpi .v small{font-size:16px;font-weight:600;color:var(--ink2)}
+.kpi .d{font-family:var(--mono);font-size:11.5px;margin-top:7px;color:var(--ink3)}
+.up{color:var(--red)}.down{color:var(--green)}
+.pill{font-family:var(--mono);font-size:9.5px;padding:2px 7px;border-radius:20px;letter-spacing:.05em}
+.pill.r{background:rgba(240,83,61,.15);color:#ff8a78}.pill.g{background:rgba(63,185,80,.15);color:#7ee787}.pill.a{background:rgba(240,160,32,.15);color:#f7c873}
+
+/* panel */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+.grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
+@media(max-width:960px){.grid2{grid-template-columns:1fr}}
+.chartbox{position:relative;height:300px}
+.chartbox.tall{height:360px}
+
+/* tabs */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.tab{font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--ink2);background:var(--panel);border:1px solid var(--line);padding:7px 14px;border-radius:8px;cursor:pointer;transition:.15s}
+.tab:hover{border-color:var(--line2);color:var(--ink)}
+.tab.active{background:var(--accent);color:#1a1205;border-color:var(--accent);font-weight:600}
+.tab.dead{opacity:.4;cursor:not-allowed}
+
+/* table */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:right;padding:9px 10px;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--ink3);text-transform:uppercase;cursor:pointer;user-select:none;white-space:nowrap}
+th:hover{color:var(--ink)}
+td{font-family:var(--mono);color:var(--ink)}
+td.name{font-family:var(--cjk);color:var(--ink)}
+tr:hover td{background:rgba(255,255,255,.02)}
+.bar{display:inline-block;height:7px;border-radius:3px;background:var(--accent);vertical-align:middle;margin-left:8px}
+.flag{font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:4px;margin-left:6px}
+.flag.risk{background:rgba(240,83,61,.18);color:#ff8a78}
+.flag.worse{background:rgba(240,160,32,.18);color:#f7c873}
+.flag.better{background:rgba(63,185,80,.18);color:#7ee787}
+
+/* anomaly cards */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:860px){.cards{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;border-top:2px solid var(--ink3)}
+.card.risk{border-top-color:var(--red)}.card.worse{border-top-color:var(--amber)}.card.better{border-top-color:var(--green)}
+.card h3{font-family:var(--disp);font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card h3 i{width:7px;height:7px;border-radius:50%;background:var(--ink3)}
+.card.risk h3 i{background:var(--red)}.card.worse h3 i{background:var(--amber)}.card.better h3 i{background:var(--green)}
+.item{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border:0}
+.item .n{font-size:13px;color:var(--ink)}
+.item .n small{display:block;font-family:var(--mono);font-size:10px;color:var(--ink3);margin-top:1px}
+.item .m{font-family:var(--mono);font-weight:700;font-size:15px;text-align:right}
+.item .m small{display:block;font-size:10px;font-weight:400}
+
+/* empty / loading */
+.empty{text-align:center;padding:70px 20px;color:var(--ink3)}
+.empty .big{font-family:var(--disp);font-size:22px;letter-spacing:.1em;color:var(--ink2);margin-bottom:10px;text-transform:uppercase}
+.empty p{font-family:var(--mono);font-size:12.5px;line-height:1.9}
+.hidden{display:none!important}
+.loader{display:inline-block;width:14px;height:14px;border:2px solid var(--line2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.9}
+a{color:var(--blue)}
+</style>
+</head>
+<body>
+<header>
+  <div class="hin">
+    <div class="logo">
+      <div class="mk"></div>
+      <div>
+        <h1>退货率复盘中控台</h1>
+        <div class="sub">三代秘纤 · RETURN-RATE COMMAND · 金额口径</div>
+      </div>
+    </div>
+    <div class="hspacer"></div>
+    <div class="badge" id="periodBadge">未载入数据</div>
+    <div class="tgt">目标：同比去年降 <input id="tgtInput" type="number" value="3" min="0" step="0.5"> 个点</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- UPLOAD -->
+  <section>
+    <div class="uploads">
+      <div class="drop" id="dropCur" data-slot="cur">
+        <div class="tag">必填 · 本期</div>
+        <div class="ttl">本期销量统计表</div>
+        <div class="opt">商品销量统计(订单口径) · BI取数 · .xlsx</div>
+        <div class="state" id="stCur">点击或拖入文件</div>
+        <div class="pct" id="pcCur"></div>
+      </div>
+      <div class="drop" id="dropLy" data-slot="ly">
+        <div class="tag">必填 · 去年同期</div>
+        <div class="ttl">去年同期销量统计表</div>
+        <div class="opt">同结构、上一年同区间 · BI取数 · .xlsx</div>
+        <div class="state" id="stLy">点击或拖入文件</div>
+        <div class="pct" id="pcLy"></div>
+      </div>
+      <div class="drop" id="dropAnchor" data-slot="anchor">
+        <div class="tag">可选 · 解锁主播/退款归因</div>
+        <div class="ttl">主播 & 退款明细</div>
+        <div class="opt">订单列表导出 · 婵管家取数 · 含主播/退款原因 .xlsx · 支持多文件</div>
+        <div class="state" id="stAnchor">点击或拖入文件</div>
+        <div class="pct" id="pcAnchor"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- EMPTY STATE -->
+  <div id="emptyState" class="empty">
+    <div class="big">等待数据载入</div>
+    <p>
+      载入「本期」与「去年同期」两份销量统计表后，自动出具复盘。<br>
+      口径：退货率 = 退货金额 ÷ 销售额（金额口径）。<br>
+      成熟规则：以本期最新日期 −15 天为界，之前为「确定值」，近 15 天为「预测/收货中」。
+    </p>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dash" class="hidden">
+    <!-- KPI -->
+    <section>
+      <div class="shead"><h2>核心指标</h2><div class="ln"></div><div class="note" id="kpiNote"></div></div>
+      <div class="kpis" id="kpis"></div>
+    </section>
+
+    <!-- TREND -->
+    <section>
+      <div class="shead"><h2>退货率趋势 · 本期 vs 去年</h2><div class="ln"></div><div class="note" id="trendNote"></div></div>
+      <div class="panel"><div class="chartbox tall"><canvas id="trendChart"></canvas></div></div>
+    </section>
+
+    <!-- DIMENSION -->
+    <section>
+      <div class="shead"><h2>维度下钻</h2><div class="ln"></div><div class="note" id="dimNote"></div></div>
+      <div class="tabs" id="dimTabs"></div>
+      <div class="grid2" style="margin-top:6px">
+        <div class="panel">
+          <div style="overflow-x:auto"><table id="dimTable"></table></div>
+        </div>
+        <div class="panel"><div class="chartbox"><canvas id="dimChart"></canvas></div></div>
+      </div>
+    </section>
+
+    <!-- ANOMALY -->
+    <section>
+      <div class="shead"><h2>机会点 / 异常点</h2><div class="ln"></div></div>
+      <div class="tabs" id="cardDimTabs" style="margin-bottom:10px"></div>
+      <div class="note" id="cardNote" style="margin-bottom:14px"></div>
+      <div id="cards"></div>
+    </section>
+  </div>
+
+  <!-- ANCHOR & REFUND (独立板块，载入主播明细后出现) -->
+  <div id="anchorDash" class="hidden">
+    <section>
+      <div class="shead"><h2>主播 &amp; 退款归因</h2><div class="ln"></div><div class="note" id="anchorNote"></div></div>
+      <div class="tabs" id="calTabs" style="margin-bottom:14px">
+        <div class="tab active" data-cal="phys">实物退货口径（剔除未发货仅退款/取消）</div>
+        <div class="tab" data-cal="all">全口径（含取消）</div>
+      </div>
+      <div id="anchorFilters" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--ink3);white-space:nowrap">时间范围</span>
+          <input type="date" id="anchorDateFrom" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 8px;border-radius:6px;width:130px">
+          <span style="color:var(--ink3);font-family:var(--mono);font-size:11px">—</span>
+          <input type="date" id="anchorDateTo" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 8px;border-radius:6px;width:130px">
+          <button id="anchorDateClear" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink2);font-family:var(--mono);font-size:10px;padding:5px 10px;border-radius:6px;cursor:pointer;letter-spacing:.04em">清除</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--ink3);white-space:nowrap">筛选主播</span>
+          <div id="anchorMultiSelect" style="position:relative">
+            <button id="anchorSelectBtn" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 28px 5px 10px;border-radius:6px;cursor:pointer;min-width:160px;text-align:left;position:relative">全部主播<span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:var(--ink3);font-size:9px">▼</span></button>
+            <div id="anchorDropdown" style="display:none;position:absolute;top:100%;left:0;z-index:50;margin-top:4px;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:8px 0;min-width:220px;max-height:320px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
+          </div>
+        </div>
+      </div>
+      <div class="kpis" id="anchorKpis" style="margin-bottom:22px"></div>
+      <div class="grid2">
+        <div class="panel">
+          <div class="note" style="margin-bottom:10px">各主播退货率（金额口径，单量≥30）</div>
+          <div style="overflow-x:auto"><table id="anchorTable"></table></div>
+        </div>
+        <div class="panel"><div class="chartbox tall"><canvas id="anchorChart"></canvas></div></div>
+      </div>
+      <div class="grid2" style="margin-top:16px">
+        <div class="panel">
+          <div class="note" style="margin-bottom:10px">退款原因构成（按退款金额）</div>
+          <div class="chartbox"><canvas id="reasonChart"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="note" style="margin-bottom:10px">流量体裁退货率</div>
+          <div class="chartbox"><canvas id="genreChart"></canvas></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- AI ANALYSIS -->
+  <section id="aiSection" class="hidden" style="margin-top:30px">
+    <div class="shead">
+      <h2>AI 智能分析</h2><div class="ln"></div>
+      <button id="aiAnalyzeBtn" style="background:var(--accent);color:#1a1205;border:none;font-family:var(--mono);font-size:11px;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600;letter-spacing:.04em">生成分析报告</button>
+      <button id="aiSettingsToggle" style="background:transparent;border:1px solid var(--line);color:var(--ink2);font-family:var(--mono);font-size:10px;padding:5px 10px;border-radius:6px;cursor:pointer;letter-spacing:.04em">设置 API Key</button>
+    </div>
+    <div id="aiSettings" style="display:none;margin-bottom:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px">
+      <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+        <button class="aiPreset" data-ep="https://api.deepseek.com/chat/completions" data-m="deepseek-chat" style="background:var(--panel2);border:1px solid var(--line2);color:var(--ink2);font-family:var(--mono);font-size:9.5px;padding:4px 10px;border-radius:6px;cursor:pointer;letter-spacing:.04em">DeepSeek</button>
+        <button class="aiPreset" data-ep="https://api.anthropic.com/v1/messages" data-m="claude-sonnet-4-6" style="background:var(--panel2);border:1px solid var(--line2);color:var(--ink2);font-family:var(--mono);font-size:9.5px;padding:4px 10px;border-radius:6px;cursor:pointer;letter-spacing:.04em">Anthropic 原生</button>
+        <button class="aiPreset" data-ep="https://api.openai.com/v1/chat/completions" data-m="gpt-4o" style="background:var(--panel2);border:1px solid var(--line2);color:var(--ink2);font-family:var(--mono);font-size:9.5px;padding:4px 10px;border-radius:6px;cursor:pointer;letter-spacing:.04em">OpenAI</button>
+      </div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;font-family:var(--mono);font-size:11px">
+        <span style="color:var(--ink3);white-space:nowrap">端点 URL</span>
+        <input type="text" id="aiEndpoint" placeholder="https://api.deepseek.com/chat/completions" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:6px">
+        <span style="color:var(--ink3);white-space:nowrap">API Key</span>
+        <input type="password" id="aiApiKey" placeholder="sk-..." style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:6px">
+        <span style="color:var(--ink3);white-space:nowrap">模型</span>
+        <input type="text" id="aiModel" placeholder="deepseek-chat" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:6px">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+        <button id="aiSaveKey" style="background:var(--blue);color:#fff;border:none;font-family:var(--mono);font-size:10px;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600;letter-spacing:.04em">保存</button>
+        <button id="aiClearKey" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink2);font-family:var(--mono);font-size:10px;padding:6px 14px;border-radius:6px;cursor:pointer">清除</button>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--ink3);margin-left:4px">仅存本机，不上传。点击预设一键填入。</span>
+      </div>
+    </div>
+    <div id="aiLoading" style="display:none;text-align:center;padding:40px;color:var(--ink2)">
+      <div class="loader" style="width:22px;height:22px;border-width:2.5px;margin:0 auto 14px"></div>
+      <div style="font-family:var(--mono);font-size:13px">AI 正在分析数据，预计 10-30 秒…</div>
+    </div>
+    <div id="aiResult" class="panel" style="display:none;line-height:1.9;font-size:13.5px"></div>
+    <div id="aiError" style="display:none;background:rgba(240,83,61,.1);border:1px solid rgba(240,83,61,.3);border-radius:10px;padding:14px 18px;color:#ff8a78;font-family:var(--mono);font-size:12px;margin-top:10px"></div>
+  </section>
+
+  <footer id="footer">
+    退货率复盘中控台 · 纯前端运行，数据不出本机 · 可挂 GitHub Pages 长期复用。<br>
+    核心指标/趋势/维度/异常板块＝<b>商品销量统计·BI取数口径</b>；主播&退款归因板块＝<b>订单列表·婵管家取数口径</b>（样本，仅作相对归因，不代表大盘）。<br>
+    退货率(金额) = −Σ退货金额 ÷ Σ销售额；目标退货率 = 去年同期退货率 − N个点（N 可调）；涨跌统一以 +/− 个点表示。
+  </footer>
+</div>
+
+<script>
+/* ============== 配置 ============== */
+const COL={date:'订单日期-天维度',sales:'销售额',ret:'退货(金额)',qty:'销售量',retq:'退货(数量)',order:'三方平台单号'};
+const DIMS=[
+  {key:'颜色名称',label:'颜色'},
+  {key:'尺码名称',label:'尺码'},
+  {key:'铁血区域',label:'区域'},
+  {key:'省份',label:'省份'},
+];
+const MATURE_DAYS=15;
+const COLORS={ink:'#e6edf3',ink2:'#9aa7b8',ink3:'#67748a',amber:'#f0a020',red:'#f0533d',green:'#3fb950',blue:'#4aa3df',line:'#27313f'};
+
+/* ============== 状态 ============== */
+const S={cur:null, ly:null, anchor:null, cal:'phys', target:3, dim:'颜色名称', cardDim:'颜色名称', sortKey:'sales', sortDir:-1, aSortKey:'rate', aSortDir:-1, curRange:'', lyRange:'', anchorRange:'', anchorDateFrom:'', anchorDateTo:'', anchorFilter:new Set(), allAnchors:[]};
+const SRC_BI='商品销量统计 · BI取数口径';
+const SRC_CG='订单列表 · 婵管家取数口径';
+let trendChart=null, dimChart=null, anchorChart=null, reasonChart=null, genreChart=null;
+
+/* ============== 工具 ============== */
+const num=v=>{const n=parseFloat(v);return isNaN(n)?0:n;};
+/* 日期解析：兼容 Excel 序列数字 / Date 对象 / 常见字符串格式 */
+function toDateStr(v){
+  if(v==null)return'';
+  if(v instanceof Date&&!isNaN(v))return v.toISOString().slice(0,10);
+  if(typeof v==='number'){
+    if(v>30000&&v<80000){ // Excel serial date range
+      const d=new Date(Math.round((v-25569)*86400)*1000);
+      if(!isNaN(d))return d.toISOString().slice(0,10);
+    }
+  }
+  const s=(''+v).trim();
+  const m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/); // YYYY-MM-DD / YYYY/MM/DD
+  if(m)return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  const m2=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/); // MM/DD/YYYY
+  if(m2)return m2[3]+'-'+m2[1].padStart(2,'0')+'-'+m2[2].padStart(2,'0');
+  return s.slice(0,10);
+}
+const fmtPct=v=>v==null||isNaN(v)?'—':v.toFixed(1)+'%';
+const fmtPP=v=>{if(v==null||isNaN(v))return'—';const s=v>=0?'+':'';return s+v.toFixed(1);};
+const fmtMoney=v=>{if(v>=1e8)return(v/1e8).toFixed(2)+'亿';if(v>=1e4)return(v/1e4).toFixed(1)+'万';return Math.round(v).toLocaleString();};
+function rr(rows){let s=0,r=0;for(const x of rows){s+=x._sales;r+=x._ret;}return s>0?(-r/s*100):null;}
+function sumSales(rows){let s=0;for(const x of rows)s+=x._sales;return s;}
+function mdKey(d){return d.slice(5);} // MM-DD
+
+/* ============== 解析 ============== */
+function readXlsx(file,onProgress){
+  return new Promise((res,rej)=>{
+    const fr=new FileReader();
+    fr.onprogress=e=>{if(e.lengthComputable&&onProgress)onProgress(e.loaded/e.total*0.5);};
+    fr.onload=e=>{
+      try{
+        if(onProgress)onProgress(0.55);
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        if(onProgress)onProgress(0.75);
+        const json=XLSX.utils.sheet_to_json(ws,{defval:null,raw:true});
+        if(onProgress)onProgress(0.9);
+        const rows=[];
+        for(const o of json){
+          const d=o[COL.date]; if(d==null)continue;
+          const ds=toDateStr(d);
+          rows.push({
+            _date:ds, _sales:num(o[COL.sales]), _ret:num(o[COL.ret]),
+            _order:o[COL.order]!=null?(''+o[COL.order]).replace(/\s/g,''):null,
+            ['颜色名称']:o['颜色名称'],['尺码名称']:o['尺码名称'],['铁血区域']:o['铁血区域'],
+            ['省份']:o['省份'],['达人名称']:o['达人名称'],['流量来源']:o['流量来源']
+          });
+        }
+        if(onProgress)onProgress(1);
+        res(rows);
+      }catch(err){rej(err);}
+    };
+    fr.onerror=rej; fr.readAsArrayBuffer(file);
+  });
+}
+function readAnchor(file,onProgress){
+  return new Promise((res,rej)=>{
+    const fr=new FileReader();
+    fr.onprogress=e=>{if(e.lengthComputable&&onProgress)onProgress(e.loaded/e.total*0.5);};
+    fr.onload=e=>{
+      try{
+        if(onProgress)onProgress(0.6);
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const json=XLSX.utils.sheet_to_json(ws,{defval:null,raw:true});
+        if(onProgress)onProgress(0.9);
+        const rows=[];
+        for(const o of json){
+          if(o['成交金额']==null&&o['退款金额']==null)continue;
+          const dt=toDateStr(o['创建时间']);
+          rows.push({
+            anchor:(o['主播']==null||(''+o['主播']).trim()===''||(''+o['主播']).trim()==='-')?'（无主播/自然流量）':(''+o['主播']).trim(),
+            gmv:num(o['成交金额']), refund:num(o['退款金额']),
+            rtype:o['退款类型']!=null?(''+o['退款类型']).trim():'未退款',
+            reason:o['退款原因']!=null?(''+o['退款原因']).trim():'-',
+            genre:(o['流量体裁']==null||(''+o['流量体裁']).trim()==='')?'其他':(''+o['流量体裁']).trim(),
+            date:dt
+          });
+        }
+        if(onProgress)onProgress(1);
+        res(rows);
+      }catch(err){rej(err);}
+    };
+    fr.onerror=rej; fr.readAsArrayBuffer(file);
+  });
+}
+
+/* 退款原因归类 */
+const REASON_THEME=[
+  {t:'尺码/版型', m:['尺码不合适','尺码没选对','大小/尺寸不合适','尺寸不合适','版型']},
+  {t:'多拍/不想要/无理由', m:['多拍/错拍/不想要','7天无理由退款','7天无理由退货','不想要了','商品买贵了或降价']},
+  {t:'商品质量', m:['商品质量不好','质量']},
+  {t:'拍错/地址错误', m:['商品信息拍错（规格/尺码/颜色等）','填错地址/电话','填错地址/不方便收货','地址']},
+  {t:'物流/发货', m:['物流','发货','未收到货','空包裹']},
+  {t:'协商/其他', m:['与商家协商一致退款','其他']},
+];
+function reasonTheme(r){
+  if(r==null||r==='-')return null;
+  for(const g of REASON_THEME)for(const k of g.m)if(r.indexOf(k)>=0)return g.t;
+  return '协商/其他';
+}
+
+/* ============== 维度可用性（区分度）============== */
+function dimUsable(rows,key){
+  const set=new Set();
+  for(let i=0;i<rows.length&&set.size<3;i++){const v=rows[i][key];if(v!=null&&(''+v).trim()!=='' && (''+v).trim()!=='-')set.add(v);}
+  return set.size>=2;
+}
+function dimValue(row,key){
+  const v=row[key]; return (v==null||(''+v).trim()==='')?'（空）':v;
+}
+
+/* ============== 渲染 ============== */
+function maturityCut(rows){
+  let max=''; for(const r of rows)if(r._date>max)max=r._date;
+  const [y,m,dd]=max.split('-').map(Number);
+  const t=Date.UTC(y,m-1,dd)-MATURE_DAYS*86400000;
+  const cut=new Date(t).toISOString().slice(0,10);
+  return {max,cut};
+}
+function renderAll(){
+  const cur=S.cur, ly=S.ly; if(!cur||!ly)return;
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('dash').classList.remove('hidden');
+  document.getElementById('aiSection').classList.remove('hidden');
+
+  const {max,cut}=maturityCut(cur);
+  const mature=cur.filter(r=>r._date<=cut);
+  const imm=cur.filter(r=>r._date>cut);
+  const rrCur=rr(mature), rrImm=rr(imm), rrLy=rr(ly);
+  const target=rrLy!=null?rrLy-S.target:null;
+  const yoy=(rrCur!=null&&rrLy!=null)?rrCur-rrLy:null;
+  const gap=(rrCur!=null&&target!=null)?rrCur-target:null;
+  const salesCur=sumSales(cur), salesLy=sumSales(ly);
+  const salesYoy=salesLy>0?(salesCur/salesLy-1)*100:null;
+
+  document.getElementById('periodBadge').textContent='本期至 '+max+' · 成熟界 '+cut;
+
+  // KPI
+  const kpis=[
+    {cls:gap!=null&&gap>0?'hot':'good',lab:'本期确定退货率',v:fmtPct(rrCur),vs:'%',
+     d:'≤'+cut+' 已成熟 · '+fmtMoney(sumSales(mature))+'元'},
+    {cls:yoy!=null&&yoy>0?'hot':'good',lab:'同比去年',
+     v:fmtPP(yoy),vs:'个点',
+     d:'去年同期 '+fmtPct(rrLy)},
+    {cls:'info',lab:'目标退货率',v:fmtPct(target),vs:'%',
+     d:'= 去年 − '+S.target+' 个点'},
+    {cls:gap!=null&&gap>0?'warn':'good',lab:'距目标',
+     v:fmtPP(gap),vs:'个点',pill:gap!=null?(gap>0?['a','未达标']:['g','已达标']):null,
+     d:gap>0?'需再降 '+gap.toFixed(1)+' 个点':'已优于目标'},
+    {cls:'info',lab:'近15天预测退货率',v:fmtPct(rrImm),vs:'%',
+     d:'收货中/未成熟 · 占销售额 '+(sumSales(imm)/salesCur*100).toFixed(0)+'%'},
+    {cls:'info',lab:'本期销售额',v:fmtMoney(salesCur),vs:'',
+     d:'去年同期 '+fmtMoney(salesLy)+'元'},
+    {cls:salesYoy>0?'good':'warn',lab:'销售额同比',v:fmtPP(salesYoy),vs:'%',
+     d:salesYoy>0?'规模扩大':'规模收缩'},
+    {cls:'info',lab:'本期订单行数',v:cur.length.toLocaleString(),vs:'',
+     d:'去年 '+ly.length.toLocaleString()+' 行'},
+  ];
+  document.getElementById('kpis').innerHTML=kpis.map(k=>`
+    <div class="kpi ${k.cls}">
+      <div class="lab"><span>${k.lab}</span>${k.pill?`<span class="pill ${k.pill[0]}">${k.pill[1]}</span>`:''}</div>
+      <div class="v">${k.v}${k.vs?`<small> ${k.vs}</small>`:''}</div>
+      <div class="d">${k.d}</div>
+    </div>`).join('');
+
+  // 板块周期 / 口径标注（BI取数）
+  document.getElementById('kpiNote').textContent='口径：'+SRC_BI+'　|　对比周期：本期 '+S.curRange+'　ＶＳ　去年 '+S.lyRange;
+  document.getElementById('trendNote').textContent='口径：'+SRC_BI+'　|　本期 '+S.curRange+' vs 去年 '+S.lyRange+'　|　7日滑动平均，虚线段=近15天未成熟';
+  document.getElementById('dimNote').textContent='口径：'+SRC_BI+'　|　本期取"确定值"样本（≤'+cut+'，已成熟） vs 去年全量';
+  document.getElementById('cardNote').textContent='口径：'+SRC_BI+'　|　本期确定值 vs 去年同期 · 综合退货率/占比/同比自动识别';
+
+  renderTrend(cur,ly,cut);
+  renderTabs();
+  renderDim();
+  renderCardTabs();
+  renderCards(mature,ly,imm,rrCur,target);
+}
+
+function renderTrend(cur,ly,cut){
+  const days=[]; const start='04-01';
+  // build full MM-DD axis from min to max month-day across both
+  const allMd=new Set();
+  cur.forEach(r=>allMd.add(mdKey(r._date))); ly.forEach(r=>allMd.add(mdKey(r._date)));
+  const axis=[...allMd].sort();
+  const agg=(rows)=>{const m={};for(const r of rows){const k=mdKey(r._date);(m[k]=m[k]||{s:0,r:0});m[k].s+=r._sales;m[k].r+=r._ret;}return m;};
+  const mc=agg(cur), ml=agg(ly);
+  const cutMd=mdKey(cut);
+  const raw=(m)=>axis.map(k=>m[k]&&m[k].s>0?(-m[k].r/m[k].s*100):null);
+  const ma=(arr)=>arr.map((_,i)=>{let s=0,n=0;for(let j=Math.max(0,i-6);j<=i;j++){if(arr[j]!=null){s+=arr[j];n++;}}return n?+(s/n).toFixed(2):null;});
+  const curMa=ma(raw(mc)), lyMa=ma(raw(ml));
+  const curConfirmed=curMa.map((v,i)=>axis[i]<=cutMd?v:null);
+  const curPredict=curMa.map((v,i)=>axis[i]>=cutMd?v:null);
+  if(trendChart)trendChart.destroy();
+  trendChart=new Chart(document.getElementById('trendChart'),{
+    type:'line',
+    data:{labels:axis,datasets:[
+      {label:'本期 · 确定',data:curConfirmed,borderColor:COLORS.amber,backgroundColor:'rgba(240,160,32,.08)',borderWidth:2.2,tension:.35,pointRadius:0,fill:false},
+      {label:'本期 · 预测(近15天)',data:curPredict,borderColor:COLORS.amber,borderDash:[5,4],borderWidth:2,tension:.35,pointRadius:0,fill:false},
+      {label:'去年同期',data:lyMa,borderColor:COLORS.blue,borderWidth:1.8,tension:.35,pointRadius:0,fill:false},
+    ]},
+    options:baseChartOpts({yPct:true,legend:true})
+  });
+}
+
+function renderTabs(){
+  const rows=S.cur;
+  const html=DIMS.map(d=>{
+    const usable=dimUsable(rows,d.key);
+    const dead=!usable;
+    if(d.key===S.dim&&dead){ // pick first usable
+      const f=DIMS.find(x=>dimUsable(rows,x.key)); if(f)S.dim=f.key;
+    }
+    return `<div class="tab ${d.key===S.dim?'active':''} ${dead?'dead':''}" data-dim="${d.key}" title="${dead?'本期该维度无区分度':''}">${d.label}${dead?' ·无数据':''}</div>`;
+  }).join('');
+  document.getElementById('dimTabs').innerHTML=html;
+  document.querySelectorAll('#dimTabs .tab').forEach(t=>{
+    if(t.classList.contains('dead'))return;
+    t.onclick=()=>{S.dim=t.dataset.dim;renderTabs();renderDim();};
+  });
+}
+function renderCardTabs(){
+  const rows=S.cur;
+  const html=DIMS.map(d=>{
+    const usable=dimUsable(rows,d.key);
+    const dead=!usable;
+    if(d.key===S.cardDim&&dead){const f=DIMS.find(x=>dimUsable(rows,x.key));if(f)S.cardDim=f.key;}
+    return `<div class="tab ${d.key===S.cardDim?'active':''} ${dead?'dead':''}" data-dim="${d.key}" title="${dead?'本期该维度无区分度':''}">${d.label}${dead?' ·无数据':''}</div>`;
+  }).join('');
+  document.getElementById('cardDimTabs').innerHTML=html;
+  document.querySelectorAll('#cardDimTabs .tab').forEach(t=>{
+    if(t.classList.contains('dead'))return;
+    t.onclick=()=>{S.cardDim=t.dataset.dim;renderAll();};
+  });
+}
+
+function buildDimStats(){
+  const {cut}=maturityCut(S.cur);
+  const mature=S.cur.filter(r=>r._date<=cut);
+  const key=S.dim;
+  const c={}, l={};
+  for(const r of mature){const k=dimValue(r,key);(c[k]=c[k]||{s:0,r:0});c[k].s+=r._sales;c[k].r+=r._ret;}
+  for(const r of S.ly){const k=dimValue(r,key);(l[k]=l[k]||{s:0,r:0});l[k].s+=r._sales;l[k].r+=r._ret;}
+  const totalS=Object.values(c).reduce((a,b)=>a+b.s,0);
+  const rrLy=rr(S.ly), target=rrLy-S.target;
+  const keys=new Set([...Object.keys(c),...Object.keys(l)]);
+  const out=[];
+  for(const k of keys){
+    const cs=c[k]||{s:0,r:0}, ls=l[k]||{s:0,r:0};
+    const cur=cs.s>0?(-cs.r/cs.s*100):null;
+    const lyv=ls.s>0?(-ls.r/ls.s*100):null;
+    out.push({name:k,cur,ly:lyv,yoy:(cur!=null&&lyv!=null)?cur-lyv:null,
+      sales:cs.s,share:totalS>0?cs.s/totalS*100:0,gap:cur!=null?cur-target:null});
+  }
+  return {rows:out,target,rrLy};
+}
+
+function renderDim(){
+  const {rows}=buildDimStats();
+  const k=S.sortKey, dir=S.sortDir;
+  rows.sort((a,b)=>{const x=a[k]==null?-1e9:a[k],y=b[k]==null?-1e9:b[k];return (x-y)*dir;});
+  const maxRr=Math.max(...rows.map(r=>r.cur||0),1);
+  const cols=[['name','维度值',0],['cur','本期退货率',1],['ly','去年退货率',1],['yoy','同比(个点)',1],['sales','本期销售额',1],['share','占比',1],['gap','距目标(个点)',1]];
+  let h='<thead><tr>'+cols.map(c=>`<th data-k="${c[0]}">${c[1]}${S.sortKey===c[0]?(dir<0?' ↓':' ↑'):''}</th>`).join('')+'</tr></thead><tbody>';
+  for(const r of rows){
+    let flag='';
+    if(r.cur!=null&&r.gap!=null&&r.gap>0&&r.share>=8)flag='<span class="flag risk">高退货</span>';
+    if(r.yoy!=null&&r.yoy>=3&&r.share>=4)flag+='<span class="flag worse">同比上升</span>';
+    if(r.yoy!=null&&r.yoy<=-2&&r.share>=4)flag+='<span class="flag better">同比下降</span>';
+    const barW=r.cur!=null?Math.round(r.cur/maxRr*48):0;
+    h+=`<tr>
+      <td class="name">${r.name}${flag}</td>
+      <td>${fmtPct(r.cur)}<span class="bar" style="width:${barW}px"></span></td>
+      <td style="color:var(--ink3)">${fmtPct(r.ly)}</td>
+      <td class="${r.yoy>0?'up':'down'}">${fmtPP(r.yoy)}</td>
+      <td>${fmtMoney(r.sales)}</td>
+      <td style="color:var(--ink2)">${r.share.toFixed(1)}%</td>
+      <td class="${r.gap>0?'up':'down'}">${fmtPP(r.gap)}</td>
+    </tr>`;
+  }
+  h+='</tbody>';
+  const t=document.getElementById('dimTable'); t.innerHTML=h;
+  t.querySelectorAll('th').forEach(th=>th.onclick=()=>{const kk=th.dataset.k;if(S.sortKey===kk)S.sortDir*=-1;else{S.sortKey=kk;S.sortDir=-1;}renderDim();});
+
+  // chart: top 8 by sales
+  const top=[...rows].sort((a,b)=>b.sales-a.sales).slice(0,8);
+  if(dimChart)dimChart.destroy();
+  dimChart=new Chart(document.getElementById('dimChart'),{
+    type:'bar',
+    data:{labels:top.map(r=>r.name),datasets:[
+      {label:'本期退货率',data:top.map(r=>r.cur),backgroundColor:COLORS.amber,borderRadius:3,barPercentage:.7},
+      {label:'去年退货率',data:top.map(r=>r.ly),backgroundColor:'rgba(74,163,223,.55)',borderRadius:3,barPercentage:.7},
+    ]},
+    options:baseChartOpts({yPct:true,legend:true,indexAxis:'y'})
+  });
+}
+
+function renderCards(mature,ly,imm,rrCur,target){
+  const {rows}=buildDimStatsForCards(mature,ly,target);
+  // 同比卡片
+  const risk=[...rows].filter(r=>r.cur!=null&&r.share>=5).sort((a,b)=>(b.cur*b.share)-(a.cur*a.share)).slice(0,5);
+  const worse=[...rows].filter(r=>r.yoy!=null&&r.share>=3&&r.yoy>0).sort((a,b)=>b.yoy-a.yoy).slice(0,5);
+  const better=[...rows].filter(r=>r.yoy!=null&&r.share>=3&&r.yoy<0).sort((a,b)=>a.yoy-b.yoy).slice(0,5);
+  const dimLabel=DIMS.find(d=>d.key===S.cardDim).label;
+  const card=(cls,title,items,metric)=>{
+    const body=items.length?items.map(metric).join(''):'<div class="item"><div class="n" style="color:var(--ink3)">该维度下无符合条件的项</div></div>';
+    return `<div class="card ${cls}"><h3><i></i>${title}（按${dimLabel}）</h3>${body}</div>`;
+  };
+  const row1=
+    card('risk','重点风险 · 高退货且占比大',risk,r=>`
+      <div class="item"><div class="n">${r.name}<small>占销售额 ${r.share.toFixed(1)}%</small></div>
+      <div class="m" style="color:#ff8a78">${fmtPct(r.cur)}<small style="color:var(--ink3)">距目标 ${fmtPP(r.gap)}</small></div></div>`)+
+    card('worse','同比上升最多（退货率↑）',worse,r=>`
+      <div class="item"><div class="n">${r.name}<small>去年 ${fmtPct(r.ly)} → 今年 ${fmtPct(r.cur)}</small></div>
+      <div class="m up">${fmtPP(r.yoy)}<small>个点</small></div></div>`)+
+    card('better','同比下降最多 / 机会（退货率↓）',better,r=>`
+      <div class="item"><div class="n">${r.name}<small>去年 ${fmtPct(r.ly)} → 今年 ${fmtPct(r.cur)}</small></div>
+      <div class="m down">${fmtPP(r.yoy)}<small>个点</small></div></div>`);
+
+  // === 纯今年口径卡片 ===
+  const mStats=buildDimStatsSimple(mature);
+  const iStats=buildDimStatsSimple(imm);
+
+  // 1. 近期恶化预警：近15天 vs 成熟期，退货率涨幅最大
+  const merged=new Map();
+  for(const r of mStats.rows)merged.set(r.name,{matureRR:r.cur,matureShare:r.share});
+  const worsen=[];
+  for(const r of iStats.rows){
+    const m=merged.get(r.name);
+    if(m&&r.cur!=null&&m.matureRR!=null&&r.cur>m.matureRR&&r.share>=3){
+      worsen.push({name:r.name,immRR:r.cur,matureRR:m.matureRR,delta:r.cur-m.matureRR,share:r.share});
+    }
+  }
+  worsen.sort((a,b)=>b.delta-a.delta);
+  const worsenTop=worsen.slice(0,5);
+
+  // 2. 销售额贡献 Top（配退货率）
+  const salesTop=[...mStats.rows].filter(r=>r.share>=2).sort((a,b)=>b.share-a.share).slice(0,5);
+
+  // 3. 高出均值项
+  const aboveAvg=[...mStats.rows].filter(r=>r.cur!=null&&r.cur>rrCur&&r.share>=3).sort((a,b)=>(b.cur-rrCur)*b.share-(a.cur-rrCur)*a.share).slice(0,5);
+
+  const row2=
+    card('risk','近期恶化预警 · 近15天退货率↑',worsenTop,r=>`
+      <div class="item"><div class="n">${r.name}<small>成熟期 ${fmtPct(r.matureRR)} → 近15天 ${fmtPct(r.immRR)}</small></div>
+      <div class="m up">${fmtPP(r.delta)}<small>个点</small></div></div>`)+
+    card('worse','销售额贡献 Top',salesTop,r=>`
+      <div class="item"><div class="n">${r.name}<small>占销售额 ${r.share.toFixed(1)}% · ${fmtMoney(r.sales)}</small></div>
+      <div class="m" style="color:var(--ink2)">${fmtPct(r.cur)}<small style="color:var(--ink3)">退货率</small></div></div>`)+
+    card('risk','高出均值 · 退货率显著偏高',aboveAvg,r=>`
+      <div class="item"><div class="n">${r.name}<small>均值 ${fmtPct(rrCur)} · 占销售额 ${r.share.toFixed(1)}%</small></div>
+      <div class="m" style="color:#ff8a78">${fmtPct(r.cur)}<small style="color:var(--ink3)">高出 ${fmtPP(r.cur-rrCur)} 个点</small></div></div>`);
+
+  document.getElementById('cards').innerHTML=
+    '<div class="cards" style="margin-bottom:6px">'+row1+'</div>'+
+    '<div style="display:flex;align-items:center;gap:10px;margin:20px 0 14px"><div style="flex:1;height:1px;background:var(--line)"></div><span style="font-family:var(--mono);font-size:10.5px;color:var(--ink3);letter-spacing:.06em;white-space:nowrap">纯今年口径 · 不依赖去年同期</span><div style="flex:1;height:1px;background:var(--line)"></div></div>'+
+    '<div class="cards">'+row2+'</div>';
+  document.getElementById('cardNote').textContent='口径：'+SRC_BI+'　|　以上所有卡片均基于成熟期数据（≤成熟界）计算';
+}
+function buildDimStatsForCards(mature,ly,target){
+  const key=S.cardDim, c={}, l={};
+  for(const r of mature){const k=dimValue(r,key);(c[k]=c[k]||{s:0,r:0});c[k].s+=r._sales;c[k].r+=r._ret;}
+  for(const r of ly){const k=dimValue(r,key);(l[k]=l[k]||{s:0,r:0});l[k].s+=r._sales;l[k].r+=r._ret;}
+  const totalS=Object.values(c).reduce((a,b)=>a+b.s,0);
+  const out=[];
+  for(const k of new Set([...Object.keys(c),...Object.keys(l)])){
+    const cs=c[k]||{s:0,r:0}, ls=l[k]||{s:0,r:0};
+    const cur=cs.s>0?(-cs.r/cs.s*100):null, lyv=ls.s>0?(-ls.r/ls.s*100):null;
+    out.push({name:k,cur,ly:lyv,yoy:(cur!=null&&lyv!=null)?cur-lyv:null,share:totalS>0?cs.s/totalS*100:0,gap:cur!=null?cur-target:null});
+  }
+  return {rows:out};
+}
+/* 单数据集维度统计（不依赖去年同期） */
+function buildDimStatsSimple(rows){
+  const key=S.cardDim, c={};
+  for(const r of rows){const k=dimValue(r,key);(c[k]=c[k]||{s:0,r:0});c[k].s+=r._sales;c[k].r+=r._ret;}
+  const totalS=Object.values(c).reduce((a,b)=>a+b.s,0);
+  const totalRefund=Object.values(c).reduce((a,b)=>a+(-b.r),0);
+  const out=[];
+  for(const [k,v] of Object.entries(c)){
+    const cur=v.s>0?(-v.r/v.s*100):null;
+    out.push({name:k,cur,sales:v.s,refund:-v.r,share:totalS>0?v.s/totalS*100:0,refundShare:totalRefund>0?(-v.r)/totalRefund*100:0});
+  }
+  return {rows:out,totalS,totalRefund};
+}
+
+function baseChartOpts(o){
+  return {
+    responsive:true,maintainAspectRatio:false,
+    indexAxis:o.indexAxis||'x',
+    interaction:{mode:'index',intersect:false},
+    plugins:{
+      legend:{display:o.legend,labels:{color:COLORS.ink2,font:{family:'IBM Plex Mono',size:11},boxWidth:14,padding:14}},
+      tooltip:{backgroundColor:'#0d1117',borderColor:COLORS.line,borderWidth:1,titleColor:COLORS.ink,bodyColor:COLORS.ink2,titleFont:{family:'IBM Plex Mono'},bodyFont:{family:'IBM Plex Mono'},
+        callbacks:{label:c=>{const v=c.parsed[o.indexAxis==='y'?'x':'y'];return ' '+c.dataset.label+': '+(v==null?'—':v.toFixed(1)+'%');}}}
+    },
+    scales:{
+      x:{grid:{color:'rgba(39,49,63,.5)'},ticks:{color:COLORS.ink3,font:{family:'IBM Plex Mono',size:10},maxRotation:0,autoSkip:true,maxTicksLimit:12},
+         ...(o.indexAxis==='y'?{ticks:{color:COLORS.ink3,font:{family:'IBM Plex Mono',size:10},callback:v=>v+'%'}}:{})},
+      y:{grid:{color:'rgba(39,49,63,.5)'},ticks:{color:COLORS.ink3,font:{family:'IBM Plex Mono',size:10},...(o.yPct&&o.indexAxis!=='y'?{callback:v=>v+'%'}:{})}}
+    }
+  };
+}
+
+/* ============== 主播 & 退款归因 ============== */
+function anchorWorkingSet(){
+  let rows=S.anchor;
+  let cut=null;
+  let mature;
+  if(S.anchorDateFrom||S.anchorDateTo){
+    // 手动时间范围：直接用日期筛选，不走成熟期逻辑
+    const from=S.anchorDateFrom||'0000-00-00';
+    const to=S.anchorDateTo||'9999-99-99';
+    mature=rows.filter(r=>r.date&&r.date>=from&&r.date<=to);
+    cut=null;
+  }else{
+    // 成熟期：以当前本地时间 −15 天为界（不依赖BI大盘）
+    const now=new Date();
+    now.setDate(now.getDate()-MATURE_DAYS);
+    cut=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+    mature=rows.filter(r=>!r.date||r.date<=cut);
+  }
+  const cancel=mature.filter(r=>r.rtype==='未发货仅退款');
+  const working=S.cal==='phys'?mature.filter(r=>r.rtype!=='未发货仅退款'):mature;
+  return {working,mature,cancel,cut};
+}
+function aRate(rows){let g=0,r=0;for(const x of rows){g+=x.gmv;r+=x.refund;}return g>0?r/g*100:null;}
+function groupBy(rows,fn){const m={};for(const x of rows){const k=fn(x);if(k==null)continue;(m[k]=m[k]||{n:0,g:0,r:0});m[k].n++;m[k].g+=x.gmv;m[k].r+=x.refund;}return m;}
+
+function buildAnchorDropdown(){
+  const dd=document.getElementById('anchorDropdown');
+  const btn=document.getElementById('anchorSelectBtn');
+  const all=S.allAnchors;
+  const sel=S.anchorFilter;
+  const total=sel.size===0?all.length:all.length-sel.size;
+  btn.innerHTML=(sel.size===0?'全部主播':`已选 ${total} 位`)+'<span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:var(--ink3);font-size:9px">▼</span>';
+
+  let h='<div style="padding:6px 12px;border-bottom:1px solid var(--line)">';
+  h+='<button id="anchorSelectAll" style="background:transparent;border:none;color:var(--blue);font-family:var(--mono);font-size:10px;cursor:pointer;letter-spacing:.04em">全选</button>';
+  h+='<span style="color:var(--ink3);margin:0 6px">|</span>';
+  h+='<button id="anchorClearAll" style="background:transparent;border:none;color:var(--ink3);font-family:var(--mono);font-size:10px;cursor:pointer;letter-spacing:.04em">清除</button>';
+  h+='</div>';
+  for(const name of all){
+    const checked=sel.size===0||!sel.has(name);
+    h+=`<label style="display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--ink);white-space:nowrap" onmouseover="this.style.background='var(--panel)'" onmouseout="this.style.background='transparent'">
+      <input type="checkbox" value="${name.replace(/"/g,'&quot;')}" ${checked?'checked':''} style="accent-color:var(--accent);cursor:pointer">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${name}</span>
+    </label>`;
+  }
+  dd.innerHTML=h;
+
+  // 绑定事件
+  dd.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+    cb.onchange=()=>{
+      if(cb.checked)S.anchorFilter.delete(cb.value);else S.anchorFilter.add(cb.value);
+      renderAnchor();
+    };
+  });
+  document.getElementById('anchorSelectAll').onclick=e=>{e.stopPropagation();S.anchorFilter.clear();renderAnchor();};
+  document.getElementById('anchorClearAll').onclick=e=>{e.stopPropagation();for(const n of all)S.anchorFilter.add(n);renderAnchor();};
+
+  // 开关下拉
+  btn.onclick=e=>{e.stopPropagation();dd.style.display=dd.style.display==='block'?'none':'block';};
+  // 点击外部关闭
+  if(!document.getElementById('anchorDropdown')._wired){
+    document.addEventListener('click',e=>{
+      const ct=document.getElementById('anchorMultiSelect');
+      if(!ct.contains(e.target))document.getElementById('anchorDropdown').style.display='none';
+    });
+    document.getElementById('anchorDropdown')._wired=true;
+  }
+}
+
+function renderAnchor(){
+  if(!S.anchor)return;
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('anchorDash').classList.remove('hidden');
+
+  // 初始化日期选择器 min/max（基于全量数据）
+  const df=document.getElementById('anchorDateFrom');
+  const dt=document.getElementById('anchorDateTo');
+  if(!df.min){
+    let mn='',mx='';
+    for(const r of S.anchor){if(r.date){if(!mn||r.date<mn)mn=r.date;if(r.date>mx)mx=r.date;}}
+    if(mn){df.min=mn;df.max=mx;dt.min=mn;dt.max=mx;}
+  }
+  // 同步 state ← input
+  S.anchorDateFrom=df.value; S.anchorDateTo=dt.value;
+
+  const {working,mature,cancel,cut}=anchorWorkingSet();
+  const rateSel=aRate(working), rateAll=aRate(mature);
+  const rawGmv=S.anchor.reduce((s,r)=>s+r.gmv,0);
+  const matureGmv=mature.reduce((s,r)=>s+r.gmv,0);
+  const workingGmv=working.reduce((s,r)=>s+r.gmv,0);
+  const dateRangeNote=(S.anchorDateFrom||S.anchorDateTo)?('　|　筛选范围：'+(S.anchorDateFrom||'最早')+' ~ '+(S.anchorDateTo||'最晚')):'';
+  const diag=[];
+  diag.push('全量 '+S.anchor.length.toLocaleString()+' 单 / <b>'+fmtMoney(rawGmv)+'</b>');
+  if(cut&&!(S.anchorDateFrom||S.anchorDateTo))diag.push('成熟期(≤'+cut+') '+mature.length.toLocaleString()+' 单 / '+fmtMoney(matureGmv));
+  if(S.cal==='phys')diag.push('剔除未发货仅退款后 '+working.length.toLocaleString()+' 单 / <b>'+fmtMoney(workingGmv)+'</b>');
+  else diag.push('当前口径 '+working.length.toLocaleString()+' 单');
+  document.getElementById('anchorNote').innerHTML=
+    '口径：'+SRC_CG+'　|　'+diag.join('　→　')+'　|　周期：'+S.anchorRange+dateRangeNote;
+
+  const kpis=[
+    {cls:'hot',lab:'样本退货率 · '+(S.cal==='phys'?'实物口径':'全口径'),v:fmtPct(rateSel),vs:'%',
+      d:S.cal==='phys'?'已剔除未发货仅退款':'含取消/未发货仅退款'},
+    {cls:'info',lab:'对照口径退货率',v:fmtPct(S.cal==='phys'?rateAll:aRate(mature.filter(r=>r.rtype!=='未发货仅退款'))),vs:'%',
+      d:S.cal==='phys'?'全口径（含取消）':'实物口径（剔除取消）'},
+    {cls:'warn',lab:'未发货仅退款(取消)',v:cancel.length.toLocaleString(),vs:'单',
+      d:'占样本 '+(cancel.length/mature.length*100).toFixed(1)+'%'},
+    {cls:'info',lab:'有效样本单量',v:working.length.toLocaleString(),vs:'单',
+      d:'参与本口径计算'},
+  ];
+  document.getElementById('anchorKpis').innerHTML=kpis.map(k=>`
+    <div class="kpi ${k.cls}"><div class="lab"><span>${k.lab}</span></div>
+    <div class="v">${k.v}${k.vs?`<small> ${k.vs}</small>`:''}</div><div class="d">${k.d}</div></div>`).join('');
+
+  // 构建主播多选下拉
+  if(!S.allAnchors.length){
+    // 首次：从全量数据（不过滤日期）提取所有主播名
+    const allSet=new Set();
+    for(const r of S.anchor)if(r.anchor)allSet.add(r.anchor);
+    S.allAnchors=[...allSet].sort();
+  }
+  buildAnchorDropdown();
+
+  // 主播表
+  const ag=groupBy(working,r=>r.anchor);
+  let arr=Object.entries(ag).map(([name,v])=>({name,n:v.n,gmv:v.g,refund:v.r,rate:v.g>0?v.r/v.g*100:null}))
+    .filter(x=>x.n>=30);
+  // 主播多选筛选（anchorFilter 存的是要隐藏的）
+  if(S.anchorFilter.size>0){
+    arr=arr.filter(r=>!S.anchorFilter.has(r.name));
+  }
+  const maxRate=Math.max(...arr.map(x=>x.rate||0),1);
+  arr.sort((a,b)=>{const k=S.aSortKey;const x=a[k]==null?-1:a[k],y=b[k]==null?-1:b[k];return(x-y)*S.aSortDir;});
+  const acols=[['name','主播',0],['n','单量',1],['gmv','成交额',1],['refund','退款额',1],['rate','退货率',1]];
+  let h='<thead><tr>'+acols.map(c=>`<th data-k="${c[0]}">${c[1]}${S.aSortKey===c[0]?(S.aSortDir<0?' ↓':' ↑'):''}</th>`).join('')+'</tr></thead><tbody>';
+  for(const r of arr){
+    const hot=r.rate!=null&&rateSel!=null&&r.rate>rateSel*1.1;
+    h+=`<tr><td class="name">${r.name}${hot?'<span class="flag risk">高于均值</span>':''}</td>
+      <td>${r.n.toLocaleString()}</td><td>${fmtMoney(r.gmv)}</td><td>${fmtMoney(r.refund)}</td>
+      <td class="${hot?'up':''}">${fmtPct(r.rate)}<span class="bar" style="width:${Math.round((r.rate||0)/maxRate*46)}px"></span></td></tr>`;
+  }
+  h+='</tbody>';
+  const t=document.getElementById('anchorTable');t.innerHTML=h;
+  t.querySelectorAll('th').forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(S.aSortKey===k)S.aSortDir*=-1;else{S.aSortKey=k;S.aSortDir=-1;}renderAnchor();});
+
+  // 主播图（按单量Top10的退货率）
+  const top=[...arr].sort((a,b)=>b.n-a.n).slice(0,10);
+  if(anchorChart)anchorChart.destroy();
+  anchorChart=new Chart(document.getElementById('anchorChart'),{type:'bar',
+    data:{labels:top.map(r=>r.name),datasets:[
+      {label:'退货率',data:top.map(r=>r.rate),backgroundColor:top.map(r=>r.rate>rateSel*1.1?COLORS.red:COLORS.amber),borderRadius:3,barPercentage:.72},
+    ]},
+    options:baseChartOpts({yPct:true,legend:false,indexAxis:'y'})});
+
+  // 退款原因（按金额）
+  const rg=groupBy(working.filter(r=>r.refund>0&&reasonTheme(r.reason)),r=>reasonTheme(r.reason));
+  const re=Object.entries(rg).map(([k,v])=>({k,amt:v.r,n:v.n})).sort((a,b)=>b.amt-a.amt);
+  if(reasonChart)reasonChart.destroy();
+  const palette=[COLORS.red,COLORS.amber,'#b07cf0',COLORS.blue,'#56c1b0','#8896a8'];
+  reasonChart=new Chart(document.getElementById('reasonChart'),{type:'doughnut',
+    data:{labels:re.map(r=>r.k+' ('+r.n+'单)'),datasets:[{data:re.map(r=>Math.round(r.amt)),backgroundColor:palette,borderColor:'#161d28',borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'58%',
+      plugins:{legend:{position:'right',labels:{color:COLORS.ink2,font:{family:'IBM Plex Mono',size:11},boxWidth:12,padding:9}},
+        tooltip:{callbacks:{label:c=>' '+c.label+': '+fmtMoney(c.parsed)+'元'}}}}});
+
+  // 流量体裁退货率
+  const gg=groupBy(working,r=>r.genre);
+  const ge=Object.entries(gg).map(([k,v])=>({k,rate:v.g>0?v.r/v.g*100:0,n:v.n})).sort((a,b)=>b.n-a.n);
+  if(genreChart)genreChart.destroy();
+  genreChart=new Chart(document.getElementById('genreChart'),{type:'bar',
+    data:{labels:ge.map(r=>[r.k,'('+r.n+'单)']),datasets:[{label:'退货率',data:ge.map(r=>+r.rate.toFixed(1)),backgroundColor:COLORS.blue,borderRadius:3,barPercentage:.6}]},
+    options:baseChartOpts({yPct:true,legend:false}),
+    plugins:[{id:'genreLabels',afterDatasetsDraw(chart){
+      const ctx=chart.ctx,meta=chart.getDatasetMeta(0);
+      ctx.save();ctx.fillStyle=COLORS.ink;ctx.font='600 10px "IBM Plex Mono"';ctx.textAlign='center';
+      meta.data.forEach((el,j)=>{const v=chart.data.datasets[0].data[j];if(v!=null)ctx.fillText(v.toFixed(1)+'%',el.x,el.y-5);});
+      ctx.restore();
+    }}]
+  });
+}
+
+/* ============== 上传交互 ============== */
+function setState(slot,msg,kind){
+  const el=document.getElementById('st'+slot.charAt(0).toUpperCase()+slot.slice(1));
+  el.innerHTML=msg; el.className='state'+(kind?' '+kind:'');
+}
+function setPct(slot,p){
+  const el=document.getElementById('pc'+slot.charAt(0).toUpperCase()+slot.slice(1));
+  el.style.width=(p*100)+'%'; if(p>=1)setTimeout(()=>el.style.width='0',600);
+}
+function markOk(slot,ok){
+  const d=document.getElementById('drop'+slot.charAt(0).toUpperCase()+slot.slice(1));
+  d.classList.toggle('ok',ok);
+}
+async function handleFile(slot,file){
+  if(!file)return;
+  try{
+    setState(slot,'<span class="loader"></span>解析中…','');
+    const rows=await readXlsx(file,p=>setPct(slot,p));
+    if(!rows.length||rows[0]._sales===undefined)throw new Error('未识别到销售额列');
+    let mn=rows[0]._date,mx=rows[0]._date;
+    for(const r of rows){if(r._date<mn)mn=r._date;if(r._date>mx)mx=r._date;}
+    S[slot]=rows; markOk(slot,true);
+    S[slot+'Range']=mn+' ~ '+mx;
+    setState(slot,'✓ '+rows.length.toLocaleString()+' 行 · '+mn+' ~ '+mx,'good');
+    if(S.cur&&S.ly)renderAll();
+    if(S.anchor)renderAnchor();
+  }catch(err){
+    setState(slot,'✗ '+(err.message||'解析失败'),'err'); markOk(slot,false);
+  }
+}
+function wire(slot){
+  const id='drop'+slot.charAt(0).toUpperCase()+slot.slice(1);
+  const d=document.getElementById(id);
+  const inp=document.createElement('input'); inp.type='file';
+  inp.accept='.xlsx,.xls'; inp.style.display='none';
+  d.appendChild(inp);
+  d.onclick=()=>inp.click();
+  d.ondragover=e=>{e.preventDefault();d.classList.add('over');};
+  d.ondragleave=()=>d.classList.remove('over');
+  if(slot==='anchor'){
+    inp.multiple=true;
+    inp.onchange=async ()=>{
+      const files=[...inp.files]; if(!files.length)return;
+      await processAnchorFiles(files);
+    };
+    d.ondrop=async e=>{
+      e.preventDefault();d.classList.remove('over');
+      const files=[...e.dataTransfer.files]; if(!files.length)return;
+      await processAnchorFiles(files);
+    };
+  }else{
+    inp.onchange=()=>handleFile(slot,inp.files[0]);
+    d.ondrop=e=>{e.preventDefault();d.classList.remove('over');handleFile(slot,e.dataTransfer.files[0]);};
+  }
+}
+async function processAnchorFiles(files){
+  setState('anchor','<span class="loader"></span>解析 '+files.length+' 个文件中…','');
+  markOk('anchor',false);
+  if(!S.anchor)S.anchor=[];
+  let totalRows=0; const errors=[]; const fileStats=[];
+  for(let i=0;i<files.length;i++){
+    try{
+      setPct('anchor',i/files.length);
+      const rows=await readAnchor(files[i],()=>{});
+      if(!rows.length){errors.push(files[i].name+': 无数据');continue;}
+      const fGmv=rows.reduce((s,r)=>s+r.gmv,0);
+      const fRefund=rows.reduce((s,r)=>s+r.refund,0);
+      const fDates=new Set(rows.map(r=>r.date).filter(Boolean));
+      fileStats.push({文件:files[i].name, 行数:rows.length, 成交额:fmtMoney(fGmv), 退款额:fmtMoney(fRefund), 日期范围:[...fDates].sort()[0]+'~'+[...fDates].sort().pop()});
+      S.anchor=S.anchor.concat(rows);
+      totalRows+=rows.length;
+    }catch(err){errors.push(files[i].name+': '+(err.message||'解析失败'));}
+  }
+  if(fileStats.length)console.table(fileStats);
+  setPct('anchor',1); markOk('anchor',totalRows>0);
+  if(errors.length&&!totalRows){
+    setState('anchor','✗ '+errors.join('；'),'err'); markOk('anchor',false); return;
+  }
+  let amn='',amx=''; let totalGmv=0;
+  for(const r of S.anchor){if(r.date){if(!amn||r.date<amn)amn=r.date;if(r.date>amx)amx=r.date;}totalGmv+=r.gmv;}
+  S.anchorRange=amn+' ~ '+amx;
+  const an=new Set(S.anchor.map(r=>r.anchor)).size;
+  S.allAnchors=[]; // 重置以触发下拉重建
+  console.log('全量汇总: '+S.anchor.length.toLocaleString()+' 单, 成交额 '+fmtMoney(totalGmv)+', 退款额 '+fmtMoney(S.anchor.reduce((s,r)=>s+r.refund,0))+', 主播 '+an+' 个, 日期 '+amn+'~'+amx);
+  if(errors.length)console.warn('解析失败:',errors);
+  setState('anchor','✓ '+S.anchor.length.toLocaleString()+' 单 · 成交额 <b>'+fmtMoney(totalGmv)+'</b> · 主播 '+an+' 个'+(errors.length?' · ⚠ '+errors.length+' 个文件失败':'')+' <a href="#" onclick="event.preventDefault();clearAnchorData();" style="color:var(--red);font-size:10px;margin-left:6px;text-decoration:none">清除</a>',errors.length?'err':'good');
+  renderAnchor();
+  if(S.cur&&S.ly)renderAll();
+}
+function clearAnchorData(){
+  S.anchor=null; S.allAnchors=[]; S.anchorFilter.clear();
+  S.anchorRange=''; S.anchorDateFrom=''; S.anchorDateTo='';
+  document.getElementById('anchorDateFrom').value=''; document.getElementById('anchorDateTo').value='';
+  markOk('anchor',false); setState('anchor','点击或拖入文件','');
+  document.getElementById('anchorDash').classList.add('hidden');
+  if(anchorChart){anchorChart.destroy();anchorChart=null;}
+  if(reasonChart){reasonChart.destroy();reasonChart=null;}
+  if(genreChart){genreChart.destroy();genreChart=null;}
+}
+['cur','ly','anchor'].forEach(wire);
+
+/* ============== AI 分析 ============== */
+// 设置管理（endpoint + key + model，兼容 CC Switch 等代理）
+const AI_DEFAULTS={endpoint:'https://api.anthropic.com/v1/messages',apikey:'',model:'claude-sonnet-4-6'};
+function loadAISettings(){
+  try{const s=JSON.parse(localStorage.getItem('ai_settings'));return{...AI_DEFAULTS,...s};}catch(e){return{...AI_DEFAULTS};}
+}
+function saveAISettings(s){localStorage.setItem('ai_settings',JSON.stringify(s));}
+(function(){
+  const s=loadAISettings();
+  document.getElementById('aiEndpoint').value=s.endpoint;
+  document.getElementById('aiApiKey').value=s.apikey;
+  document.getElementById('aiModel').value=s.model;
+})();
+document.getElementById('aiSettingsToggle').onclick=()=>{
+  const s=document.getElementById('aiSettings');
+  s.style.display=s.style.display==='none'?'block':'none';
+};
+document.getElementById('aiSaveKey').onclick=()=>{
+  saveAISettings({
+    endpoint:document.getElementById('aiEndpoint').value.trim()||AI_DEFAULTS.endpoint,
+    apikey:document.getElementById('aiApiKey').value.trim(),
+    model:document.getElementById('aiModel').value.trim()||AI_DEFAULTS.model
+  });
+  document.getElementById('aiSettings').style.display='none';
+};
+document.getElementById('aiClearKey').onclick=()=>{
+  localStorage.removeItem('ai_settings');
+  document.getElementById('aiEndpoint').value=AI_DEFAULTS.endpoint;
+  document.getElementById('aiApiKey').value='';
+  document.getElementById('aiModel').value=AI_DEFAULTS.model;
+};
+
+function compileAnalysisReport(){
+  const {max,cut}=maturityCut(S.cur);
+  const mature=S.cur.filter(r=>r._date<=cut);
+  const imm=S.cur.filter(r=>r._date>cut);
+  const rrCur=rr(mature), rrImm=rr(imm), rrLy=rr(S.ly);
+  const target=rrLy!=null?rrLy-S.target:null;
+  const gap=rrCur!=null&&target!=null?rrCur-target:null;
+  const yoy=rrCur!=null&&rrLy!=null?rrCur-rrLy:null;
+  const salesCur=sumSales(S.cur), salesLy=sumSales(S.ly);
+  const salesYoy=salesLy>0?(salesCur/salesLy-1)*100:null;
+
+  let report='# 退货率复盘数据报告\n\n';
+  report+='## 一、核心指标（金额口径）\n';
+  report+='- 本期确定退货率：'+fmtPct(rrCur)+'（≤'+cut+'，已成熟）\n';
+  report+='- 去年同期退货率：'+fmtPct(rrLy)+'\n';
+  report+='- 同比变化：'+fmtPP(yoy)+' 个点\n';
+  report+='- 目标退货率：'+fmtPct(target)+'（去年 − '+S.target+' 个点）\n';
+  report+='- 距目标差距：'+fmtPP(gap)+' 个点'+(gap>0?'（未达标）':'（已达标）')+'\n';
+  report+='- 近15天预测退货率：'+fmtPct(rrImm)+'（未成熟，占销售额 '+(sumSales(imm)/salesCur*100).toFixed(0)+'%）\n';
+  report+='- 本期销售额：'+fmtMoney(salesCur)+'，同比 '+fmtPP(salesYoy)+'%\n';
+  report+='- 数据周期：'+S.curRange+'（对比 '+S.lyRange+'）\n\n';
+
+  // 逐维度分析
+  for(const dim of DIMS){
+    const usable=dimUsable(S.cur,dim.key);
+    if(!usable)continue;
+    const c={}, l={};
+    for(const r of mature){const k=dimValue(r,dim.key);(c[k]=c[k]||{s:0,r:0});c[k].s+=r._sales;c[k].r+=r._ret;}
+    for(const r of S.ly){const k=dimValue(r,dim.key);(l[k]=l[k]||{s:0,r:0});l[k].s+=r._sales;l[k].r+=r._ret;}
+    const tS=Object.values(c).reduce((a,b)=>a+b.s,0);
+    const rows=[];
+    for(const k of new Set([...Object.keys(c),...Object.keys(l)])){
+      const cs=c[k]||{s:0,r:0}, ls=l[k]||{s:0,r:0};
+      const cur=cs.s>0?(-cs.r/cs.s*100):null, lyv=ls.s>0?(-ls.r/ls.s*100):null;
+      rows.push({name:k,cur,ly:lyv,yoy:(cur!=null&&lyv!=null)?cur-lyv:null,share:tS>0?cs.s/tS*100:0,sales:cs.s});
+    }
+    const risk=rows.filter(r=>r.cur!=null&&r.share>=3).sort((a,b)=>(b.cur*b.share)-(a.cur*a.share)).slice(0,5);
+    if(!risk.length)continue;
+    report+='## '+dim.label+'维度 · 重点风险 Top5\n';
+    report+='| 维度值 | 退货率 | 去年 | 同比 | 占比 | 销售额 |\n';
+    report+='|--------|--------|------|------|------|--------|\n';
+    for(const r of risk){
+      report+='| '+r.name+' | '+fmtPct(r.cur)+' | '+fmtPct(r.ly)+' | '+fmtPP(r.yoy)+'个点 | '+r.share.toFixed(1)+'% | '+fmtMoney(r.sales)+' |\n';
+    }
+    report+='\n';
+  }
+
+  // 主播数据（如有）
+  if(S.anchor&&S.anchor.length){
+    const {working}=anchorWorkingSet();
+    const aRateVal=aRate(working);
+    report+='## 主播&退款归因（婵管家口径，样本）\n';
+    report+='- 样本退货率：'+fmtPct(aRateVal)+'（'+S.cal+'口径）\n';
+    report+='- 有效样本：'+working.length.toLocaleString()+' 单\n';
+    const ag=groupBy(working,r=>r.anchor);
+    const aTop=Object.entries(ag).map(([n,v])=>({n,rate:v.g>0?v.r/v.g*100:null,gmv:v.g})).filter(x=>x.gmv>0).sort((a,b)=>b.gmv-a.gmv).slice(0,5);
+    if(aTop.length){
+      report+='- 成交额 Top5 主播退货率：\n';
+      for(const a of aTop)report+='  - '+a.n+'：成交 '+fmtMoney(a.gmv)+'，退货率 '+fmtPct(a.rate)+'\n';
+    }
+    report+='\n';
+  }
+
+  report+='---\n';
+  report+='请基于以上数据，以数据驱动的视角进行专业分析，涵盖以下要点：\n';
+  report+='1. **核心诊断**：退货率现状的总体判断，是否严重？主要矛盾在哪里？\n';
+  report+='2. **维度风险拆解**：哪些维度（颜色/尺码/区域/省份）的哪些具体值是最主要的问题来源？按紧急程度排序。\n';
+  report+='3. **趋势预警**：近15天预测值 vs 成熟期对比，是否有恶化趋势？\n';
+  report+='4. **可执行建议**：针对发现的问题，提出 3-5 条具体、可落地、能直接指导运营动作的降退货建议，每条标注预期影响大小（大/中/小）。\n';
+  report+='要求：语言精炼，多用数据说话，给出优先级排序，避免泛泛而谈。';
+
+  return report;
+}
+
+function formatAIText(text){
+  return '<div style="white-space:pre-wrap">'+text.replace(/</g,'&lt;').replace(/^### (.+)/gm,'<h3 style="font-family:var(--disp);font-size:15px;letter-spacing:.06em;color:var(--ink);margin:18px 0 8px">$1</h3>').replace(/^## (.+)/gm,'<h2 style="font-family:var(--disp);font-size:17px;letter-spacing:.08em;color:var(--amber);margin:22px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px">$1</h2>').replace(/^# (.+)/gm,'<h1 style="font-family:var(--disp);font-size:20px;letter-spacing:.1em;color:var(--amber);margin:24px 0 10px">$1</h1>').replace(/\*\*(.+?)\*\*/g,'<b style="color:var(--ink)">$1</b>').replace(/^- (.+)/gm,'<li style="margin-left:18px;color:var(--ink2)">$1</li>').replace(/^\d+\.\s(.+)/gm,'<li style="margin-left:18px;color:var(--ink2)">$1</li>')+'</div>';
+}
+
+async function runAIAnalysis(){
+  const cfg=loadAISettings();
+  if(!cfg.apikey){
+    document.getElementById('aiSettings').style.display='block';
+    document.getElementById('aiError').style.display='block';
+    document.getElementById('aiError').textContent='请先设置 API 端点、Key 和模型（点击上方"设置 API Key"按钮）';
+    return;
+  }
+  document.getElementById('aiResult').style.display='none';
+  document.getElementById('aiError').style.display='none';
+  document.getElementById('aiLoading').style.display='block';
+
+  try{
+    const report=compileAnalysisReport();
+    const isAnthropic=cfg.endpoint.includes('anthropic');
+    let resp,data,text;
+    if(isAnthropic){
+      resp=await fetch(cfg.endpoint,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':cfg.apikey,'anthropic-version':'2023-06-01'},
+        body:JSON.stringify({model:cfg.model,max_tokens:4096,messages:[{role:'user',content:report}]})
+      });
+      if(!resp.ok){const err=await resp.json().catch(()=>({}));throw new Error(err.error?.message||'HTTP '+resp.status);}
+      data=await resp.json();
+      text=data.content[0].text;
+    }else{
+      // OpenAI 兼容格式（CC Switch 等代理）
+      resp=await fetch(cfg.endpoint,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.apikey},
+        body:JSON.stringify({model:cfg.model,max_tokens:4096,messages:[{role:'user',content:report}]})
+      });
+      if(!resp.ok){const err=await resp.json().catch(()=>({}));throw new Error(err.error?.message||'HTTP '+resp.status);}
+      data=await resp.json();
+      text=data.choices[0].message.content;
+    }
+    document.getElementById('aiResult').innerHTML=formatAIText(text);
+    document.getElementById('aiResult').style.display='block';
+  }catch(err){
+    document.getElementById('aiError').style.display='block';
+    document.getElementById('aiError').textContent='分析失败：'+(err.message||'未知错误');
+  }finally{
+    document.getElementById('aiLoading').style.display='none';
+  }
+}
+
+document.getElementById('aiAnalyzeBtn').onclick=runAIAnalysis;
+	// 预设按钮：点击自动填入 endpoint 和 model
+	document.querySelectorAll('.aiPreset').forEach(btn=>{
+	  btn.onclick=()=>{
+	    document.getElementById('aiEndpoint').value=btn.dataset.ep;
+	    document.getElementById('aiModel').value=btn.dataset.m;
+	  };
+	});
+
+document.getElementById('tgtInput').oninput=e=>{S.target=num(e.target.value);if(S.cur&&S.ly)renderAll();};
+document.querySelectorAll('#calTabs .tab').forEach(t=>t.onclick=()=>{S.cal=t.dataset.cal;document.querySelectorAll('#calTabs .tab').forEach(x=>x.classList.toggle('active',x===t));renderAnchor();});
+document.getElementById('anchorDateFrom').onchange=()=>{S.anchorDateFrom=document.getElementById('anchorDateFrom').value;renderAnchor();};
+document.getElementById('anchorDateTo').onchange=()=>{S.anchorDateTo=document.getElementById('anchorDateTo').value;renderAnchor();};
+document.getElementById('anchorDateClear').onclick=()=>{document.getElementById('anchorDateFrom').value='';document.getElementById('anchorDateTo').value='';S.anchorDateFrom='';S.anchorDateTo='';renderAnchor();};
+</script>
+</body>
+</html>
