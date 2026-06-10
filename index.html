@@ -210,8 +210,32 @@ a{color:var(--blue)}
     <p>
       载入「本期」与「去年同期」两份销量统计表后，自动出具复盘。<br>
       口径：退货率 = 退货金额 ÷ 销售额（金额口径）。<br>
-      成熟规则：以本期最新日期 −15 天为界，之前为「确定值」，近 15 天为「预测/收货中」。
+      成熟规则：以当前北京时间 − 15 天为界，之前为「确定值」，近 15 天为「预测/收货中」。
     </p>
+    <div style="margin-top: 28px; max-width: 720px; margin-left: auto; margin-right: auto; text-align: left">
+      <div style="padding: 20px 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: inline-block; text-align: left">
+        <div style="font-family: var(--disp); font-size: 13px; letter-spacing: .08em; color: var(--amber); margin-bottom: 14px; text-transform: uppercase">BI 取数 · 必须字段清单</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-family: var(--mono); font-size: 11.5px; line-height: 1.8">
+          <div><span style="color: var(--red)">●</span> 订单日期-天维度</div>
+          <div><span style="color: var(--red)">●</span> 销售额</div>
+          <div><span style="color: var(--red)">●</span> 退货(金额)</div>
+          <div><span style="color: var(--red)">●</span> 商品名称</div>
+          <div><span style="color: var(--amber)">○</span> 盈利体系名称</div>
+          <div><span style="color: var(--amber)">○</span> 达人名称</div>
+          <div><span style="color: var(--amber)">○</span> 颜色名称</div>
+          <div><span style="color: var(--amber)">○</span> 尺码名称</div>
+          <div><span style="color: var(--amber)">○</span> 铁血区域</div>
+          <div><span style="color: var(--amber)">○</span> 省份</div>
+          <div><span style="color: var(--ink3)">·</span> 三方平台单号</div>
+          <div><span style="color: var(--ink3)">·</span> 销售量</div>
+        </div>
+        <div style="font-family: var(--mono); font-size: 10px; color: var(--ink3); margin-top: 12px; line-height: 1.7">
+          <span style="color: var(--red)">●</span> = 核心必填（缺一不可）&nbsp;&nbsp;
+          <span style="color: var(--amber)">○</span> = 维度下钻（缺则对应维度不可用）&nbsp;&nbsp;
+          <span style="color: var(--ink3)">·</span> = 辅助字段（可选）
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- DASHBOARD -->
