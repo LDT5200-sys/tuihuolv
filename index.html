@@ -1296,8 +1296,10 @@ function updateAnchorDropdown(){
   const set=new Set();
   for(const r of rows)if(r['达人名称'])set.add(r['达人名称']);
   const as=[...set].sort();
+  const aEl=document.getElementById('selAnchor');
   aEl.innerHTML='<option value="全部">全部达人</option>'+as.map(a=>`<option value="${a}">${a.length>20?a.slice(0,18)+'…':a}</option>`).join('');
   aEl.value='全部';
+  S.selAnchor='全部';
 }
 document.getElementById('selProduct').onchange=function(){S.selProduct=this.value;renderAll();};
 document.getElementById('selPlatform').onchange=function(){S.selPlatform=this.value;updateChannelDropdown();updateAnchorDropdown();renderAll();};
