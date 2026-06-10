@@ -1304,11 +1304,13 @@ function updateAnchorDropdown(){
 document.getElementById('selProduct').onchange=function(){S.selProduct=this.value;renderAll();};
 document.getElementById('selPlatform').onchange=function(){S.selPlatform=this.value;updateChannelDropdown();updateAnchorDropdown();renderAll();};
 document.getElementById('selChannel').onchange=function(){S.selChannel=this.value;renderAll();};
+document.getElementById('selAnchor').onchange=function(){S.selAnchor=this.value;renderAll();};
 
 function renderComparison(){
   if(!S.cur||!S.ly)return;
+  const {cur,ly}=getFiltered();
+  if(!cur.length||!ly.length){document.getElementById('compSection').classList.add('hidden');return;}
   document.getElementById('compSection').classList.remove('hidden');
-  const cur=S.cur, ly=S.ly;
   const {cut}=maturityCut(cur);
   const mature=cur.filter(r=>r._date<=cut);
   const rrCurAll=rr(mature), rrLyAll=rr(ly);
