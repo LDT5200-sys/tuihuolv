@@ -134,6 +134,21 @@ tr:hover td{background:rgba(255,255,255,.02)}
 @keyframes spin{to{transform:rotate(360deg)}}
 footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:10.5px;color:var(--ink3);line-height:1.9}
 a{color:var(--blue)}
+
+/* multi-select */
+.ms-wrap{position:relative;display:inline-block}
+.ms-btn{background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 28px 5px 10px;border-radius:6px;cursor:pointer;min-width:100px;text-align:left;position:relative;white-space:nowrap}
+.ms-btn::after{content:"\\25BC";position:absolute;right:8px;top:50%;transform:translateY(-50%);color:var(--ink3);font-size:9px}
+.ms-btn.has{color:var(--accent);border-color:var(--accent)}
+.ms-panel{display:none;position:absolute;top:100%;left:0;z-index:60;margin-top:4px;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:6px 0;min-width:180px;max-height:300px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.ms-panel.show{display:block}
+.ms-item{display:flex;align-items:center;gap:6px;padding:5px 12px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--ink);transition:background .12s}
+.ms-item:hover{background:rgba(255,255,255,.04)}
+.ms-item input[type=checkbox]{accent-color:var(--accent);width:13px;height:13px;cursor:pointer}
+.ms-actions{display:flex;gap:4px;padding:6px 12px;border-bottom:1px solid var(--line)}
+.ms-actions button{background:var(--panel);border:1px solid var(--line);color:var(--ink2);font-family:var(--mono);font-size:9.5px;padding:3px 8px;border-radius:4px;cursor:pointer}
+.ms-actions button:hover{color:var(--ink);border-color:var(--line2)}
+
 </style>
 </head>
 <body>
@@ -152,21 +167,11 @@ a{color:var(--blue)}
   </div>
   <div style="background:var(--panel);border-bottom:1px solid var(--line);padding:8px 0">
     <div class="hin" style="padding:6px 22px;gap:10px">
-      <select id="selProduct" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:6px;min-width:100px">
-        <option value="全部">全部产品</option>
-      </select>
-      <select id="selPlatform" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:6px;min-width:100px">
-        <option value="全部">全部平台</option>
-      </select>
-      <select id="selChannel" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:6px;min-width:140px">
-        <option value="全部">全部渠道</option>
-      </select>
-	      <select id="selAnchor" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:6px;min-width:100px">
-	        <option value="全部">全部达人</option>
-	      </select>
+      <div class="ms-wrap"><button class="ms-btn" id="msProductBtn" onclick="toggleMSPanel('msProductPanel')">全部产品</button><div class="ms-panel" id="msProductPanel"></div></div>
+      <div class="ms-wrap"><button class="ms-btn" id="msPlatformBtn" onclick="toggleMSPanel('msPlatformPanel')">全部平台</button><div class="ms-panel" id="msPlatformPanel"></div></div>
+      <div class="ms-wrap"><button class="ms-btn" id="msChannelBtn" onclick="toggleMSPanel('msChannelPanel')">全部渠道</button><div class="ms-panel" id="msChannelPanel"></div></div>
+      <div class="ms-wrap"><button class="ms-btn" id="msAnchorBtn" onclick="toggleMSPanel('msAnchorPanel')">全部达人</button><div class="ms-panel" id="msAnchorPanel"></div></div>
       <span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">筛选后自动更新图表</span>
-	        <option value="全部">全部达人</option>
-	      </select>
     </div>
   </div>
 </header>
@@ -367,7 +372,7 @@ const MATURE_DAYS=15;
 const COLORS={ink:'#e6edf3',ink2:'#9aa7b8',ink3:'#67748a',amber:'#f0a020',red:'#f0533d',green:'#3fb950',blue:'#4aa3df',line:'#27313f'};
 
 /* ============== 状态 ============== */
-	const S={cur:null, ly:null, anchor:null, cal:'phys', target:3, dim:'颜色名称', cardDim:'颜色名称', sortKey:'sales', sortDir:-1, aSortKey:'rate', aSortDir:-1, curRange:'', lyRange:'', anchorRange:'', anchorDateFrom:'', anchorDateTo:'', anchorFilter:new Set(), allAnchors:[], selProduct:'全部', selPlatform:'全部', selChannel:'全部', selAnchor:'全部'};
+	const S={cur:null, ly:null, anchor:null, cal:'phys', target:3, dim:'颜色名称', cardDim:'颜色名称', sortKey:'sales', sortDir:-1, aSortKey:'rate', aSortDir:-1, curRange:'', lyRange:'', anchorRange:'', anchorDateFrom:'', anchorDateTo:'', anchorFilter:new Set(), allAnchors:[], selProduct:new Set(), selPlatform:new Set(), selChannel:new Set(), selAnchor:new Set()};
 const SRC_BI='商品销量统计 · BI取数口径';
 const SRC_CG='订单列表 · 婵管家取数口径';
 let trendChart=null, dimChart=null, anchorChart=null, reasonChart=null, genreChart=null, compChart=null;
@@ -491,10 +496,10 @@ function dimValue(row,key){
 /* ============== 筛选 ============== */
 function filterRows(rows){
   let r=rows;
-  if(S.selProduct!=='全部') r=r.filter(x=>x._product===S.selProduct);
-  if(S.selPlatform!=='全部') r=r.filter(x=>x._platform===S.selPlatform);
-  if(S.selChannel!=='全部') r=r.filter(x=>x._channel===S.selChannel);
-  if(S.selAnchor!=='全部') r=r.filter(x=>x['达人名称']===S.selAnchor);
+  if(S.selProduct.size) r=r.filter(x=>S.selProduct.has(x._product));
+  if(S.selPlatform.size) r=r.filter(x=>S.selPlatform.has(x._platform));
+  if(S.selChannel.size) r=r.filter(x=>S.selChannel.has(x._channel));
+  if(S.selAnchor.size) r=r.filter(x=>S.selAnchor.has(x['达人名称']));
   return r;
 }
 function getFiltered(){ return {cur:filterRows(S.cur), ly:filterRows(S.ly)}; }
@@ -1269,42 +1274,31 @@ function detectPlatforms(){
 function populateFilters(){
   const ps=detectProducts();
   PRODUCTS=ps;
-  const psEl=document.getElementById('selProduct');
-  psEl.innerHTML='<option value="全部">全部产品</option>'+ps.map(p=>{const s=p.includes('秘纤')?'秘纤':p.includes('秘战')?'秘战':p;return `<option value="${p}">${s}</option>`;}).join('');
-  psEl.value=S.selProduct;
+  fillMSPanel('msProductPanel',ps.map(p=>({label: p.includes('秘纤')?'秘纤':p.includes('秘战')?'秘战':p, value:p})), S.selProduct, 'msProductBtn', '全部产品', function(){renderAll();});
   const pls=detectPlatforms();
-  const plEl=document.getElementById('selPlatform');
-  plEl.innerHTML='<option value="全部">全部平台</option>'+pls.map(p=>`<option value="${p}">${p}</option>`).join('');
-  plEl.value=S.selPlatform;
-  updateChannelDropdown();
-  updateAnchorDropdown();
+  fillMSPanel('msPlatformPanel',pls.map(p=>({label:p, value:p})), S.selPlatform, 'msPlatformBtn', '全部平台', function(){updateChannelPanel();updateAnchorPanel();renderAll();});
+  updateChannelPanel();
+  updateAnchorPanel();
 }
-function updateChannelDropdown(){
-  const rows=S.selPlatform==='全部'?S.cur:S.cur.filter(r=>r._platform===S.selPlatform);
+function updateChannelPanel(){
+  let rows=S.cur;
+  if(S.selPlatform.size) rows=rows.filter(r=>S.selPlatform.has(r._platform));
   const set=new Set();
   for(const r of rows)if(r._channel)set.add(r._channel);
   const chs=[...set].sort();
-  const chEl=document.getElementById('selChannel');
-  chEl.innerHTML='<option value="全部">全部渠道</option>'+chs.map(c=>`<option value="${c}">${c.length>30?c.slice(0,28)+'…':c}</option>`).join('');
-  S.selChannel='全部';
-  chEl.value='全部';
+  for(const c of S.selChannel){if(!set.has(c))S.selChannel.delete(c);}
+  fillMSPanel('msChannelPanel',chs.map(c=>({label: c.length>30?c.slice(0,28)+'…':c, value:c})), S.selChannel, 'msChannelBtn', '全部渠道', function(){renderAll();});
 }
-function updateAnchorDropdown(){
+function updateAnchorPanel(){
   let rows=S.cur;
-  if(S.selPlatform!=='全部') rows=rows.filter(r=>r._platform===S.selPlatform);
-  if(S.selChannel!=='全部') rows=rows.filter(r=>r._channel===S.selChannel);
+  if(S.selPlatform.size) rows=rows.filter(r=>S.selPlatform.has(r._platform));
+  if(S.selChannel.size) rows=rows.filter(r=>S.selChannel.has(r._channel));
   const set=new Set();
   for(const r of rows)if(r['达人名称'])set.add(r['达人名称']);
   const as=[...set].sort();
-  const aEl=document.getElementById('selAnchor');
-  aEl.innerHTML='<option value="全部">全部达人</option>'+as.map(a=>`<option value="${a}">${a.length>20?a.slice(0,18)+'…':a}</option>`).join('');
-  aEl.value='全部';
-  S.selAnchor='全部';
+  for(const a of S.selAnchor){if(!set.has(a))S.selAnchor.delete(a);}
+  fillMSPanel('msAnchorPanel',as.map(a=>({label: a.length>20?a.slice(0,18)+'…':a, value:a})), S.selAnchor, 'msAnchorBtn', '全部达人', function(){renderAll();});
 }
-document.getElementById('selProduct').onchange=function(){S.selProduct=this.value;renderAll();};
-document.getElementById('selPlatform').onchange=function(){S.selPlatform=this.value;updateChannelDropdown();updateAnchorDropdown();renderAll();};
-document.getElementById('selChannel').onchange=function(){S.selChannel=this.value;renderAll();};
-document.getElementById('selAnchor').onchange=function(){S.selAnchor=this.value;renderAll();};
 
 function renderComparison(){
   if(!S.cur||!S.ly)return;
@@ -1344,8 +1338,8 @@ function renderComparison(){
     })
   });
   const channels={};
-  const filterSer=S.selPlatform==='全部'?mature:mature.filter(r=>r._platform===S.selPlatform);
-  const filterLy=S.selPlatform==='全部'?ly:ly.filter(r=>r._platform===S.selPlatform);
+  const filterSer=S.selPlatform.size?mature.filter(r=>S.selPlatform.has(r._platform)):mature;
+  const filterLy=S.selPlatform.size?ly.filter(r=>S.selPlatform.has(r._platform)):ly;
   for(const r of filterSer){
     const ch=r._channel; if(!ch)continue;
     (channels[ch]=channels[ch]||{curS:0,curR:0,lyS:0,lyR:0,p:r._platform}).curS+=r._sales; channels[ch].curR+=r._ret;
@@ -1394,6 +1388,76 @@ function renderComparison(){
     }).join('')
     +'</tbody></table>';
 }
+
+
+/* ============== 多选筛选组件 ============== */
+var MS_CB={};
+function fillMSPanel(pid, opts, selSet, bid, defLabel, cb){
+  MS_CB[pid]=cb;
+  var p=document.getElementById(pid);
+  var b=document.getElementById(bid);
+  var n=selSet.size;
+  b.textContent=n?defLabel.replace('全部','已选')+' ('+n+')':defLabel;
+  if(n)b.classList.add('has');else b.classList.remove('has');
+  var h='<div class="ms-actions"><button onclick="MS_all(\''+pid+'\',\''+bid+'\',\''+defLabel+'\')">全选</button><button onclick="MS_clear(\''+pid+'\',\''+bid+'\',\''+defLabel+'\')">清除</button></div>';
+  for(var i=0;i<opts.length;i++){
+    var o=opts[i];
+    var ck=selSet.has(o.value)?' checked':'';
+    h+='<label class="ms-item"><input type="checkbox" value="'+o.value.replace(/'/g,'&#39;')+'"'+ck+' onchange="MS_chk(this,\''+bid+'\',\''+defLabel+'\')">'+o.label+'</label>';
+  }
+  p.innerHTML=h;
+}
+function MS_chk(cb, bid, defLabel){
+  var p=cb.closest('.ms-panel');
+  var sel=MS_upd(p.id, bid, defLabel);
+  MS_apply(bid, sel);
+  var f=MS_CB[p.id]; if(f)f();
+}
+function MS_upd(pid, bid, defLabel){
+  var p=document.getElementById(pid);
+  var cs=p.querySelectorAll('input[type=checkbox]');
+  var sel=new Set();
+  for(var i=0;i<cs.length;i++)if(cs[i].checked)sel.add(cs[i].value);
+  var b=document.getElementById(bid);
+  if(sel.size){b.textContent=defLabel.replace('全部','已选')+' ('+sel.size+')';b.classList.add('has');}
+  else{b.textContent=defLabel;b.classList.remove('has');}
+  return sel;
+}
+function MS_all(pid, bid, defLabel){
+  var p=document.getElementById(pid);
+  var cs=p.querySelectorAll('input[type=checkbox]');
+  for(var i=0;i<cs.length;i++)cs[i].checked=true;
+  var sel=MS_upd(pid, bid, defLabel);
+  MS_apply(bid, sel);
+  var f=MS_CB[pid]; if(f)f();
+}
+function MS_clear(pid, bid, defLabel){
+  var p=document.getElementById(pid);
+  var cs=p.querySelectorAll('input[type=checkbox]');
+  for(var i=0;i<cs.length;i++)cs[i].checked=false;
+  MS_upd(pid, bid, defLabel);
+  MS_apply(bid, new Set());
+  var f=MS_CB[pid]; if(f)f();
+}
+function MS_apply(bid, sel){
+  if(bid==='msProductBtn') S.selProduct=sel;
+  else if(bid==='msPlatformBtn'){S.selPlatform=sel; updateChannelPanel(); updateAnchorPanel();}
+  else if(bid==='msChannelBtn') S.selChannel=sel;
+  else if(bid==='msAnchorBtn') S.selAnchor=sel;
+}
+function toggleMSPanel(pid){
+  var p=document.getElementById(pid);
+  var open=p.classList.contains('show');
+  var all=document.querySelectorAll('.ms-panel');
+  for(var i=0;i<all.length;i++)all[i].classList.remove('show');
+  if(!open)p.classList.add('show');
+}
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.ms-wrap')){
+    var all=document.querySelectorAll('.ms-panel');
+    for(var i=0;i<all.length;i++)all[i].classList.remove('show');
+  }
+});
 
 </script>
 </body>
