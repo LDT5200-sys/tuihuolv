@@ -464,7 +464,7 @@ function filterMatureAnchor(rows, cutDate){
   return rows.filter(r=>r.date<=cutDate);
 }
 
-const S={cur:null, ly:null, anchor:null, cal:'phys', target:3, dim:'颜色名称', cardDim:'颜色名称', sortKey:'sales', sortDir:-1, aSortKey:'rate', aSortDir:-1, curRange:'', lyRange:'', anchorRange:'', anchorDateFrom:'', anchorDateTo:'', anchorFilter:new Set(), allAnchors:[], selProduct:new Set(), selPlatform:new Set(), selChannel:new Set(), selAnchor:new Set()};
+const S={cur:null, ly:null, anchor:null, cal:'phys', target:3, dim:'颜色名称', cardDim:'颜色名称', sortKey:'impact', sortDir:-1, aSortKey:'rate', aSortDir:-1, curRange:'', lyRange:'', anchorRange:'', anchorDateFrom:'', anchorDateTo:'', anchorFilter:new Set(), allAnchors:[], selProduct:new Set(), selPlatform:new Set(), selChannel:new Set(), selAnchor:new Set()};
 const SRC_BI='商品销量统计 · BI取数口径';
 const SRC_CG='订单列表 · 婵管家取数口径';
 let trendChart=null, dimChart=null, anchorChart=null, reasonChart=null, genreChart=null, compChart=null;
@@ -663,7 +663,7 @@ function renderAll(){
   // 板块周期 / 口径标注（BI取数）
   document.getElementById('kpiNote').textContent='口径：'+SRC_BI+'　|　对比周期：本期 '+S.curRange+'　ＶＳ　去年 '+S.lyRange;
   document.getElementById('trendNote').textContent='口径：'+SRC_BI+'　|　本期 '+S.curRange+' vs 去年 '+S.lyRange+'　|　7日滑动平均，虚线段=近15天未成熟';
-  document.getElementById('dimNote').textContent='口径：'+SRC_BI+'　|　本期取"确定值"样本（≤'+cut+'，已成熟） vs 去年全量';
+  document.getElementById('dimNote').innerHTML='口径：'+SRC_BI+'　|　本期确定值 vs 去年同期　|　<span style="color:var(--amber)">★ 影响权重 = 销售占比 × 退货率</span>（越高越需要优先优化）';
   document.getElementById('cardNote').textContent='口径：'+SRC_BI+'　|　本期确定值 vs 去年同期 · 综合退货率/占比/同比自动识别';
 
   renderTrend(cur,ly,cut);
@@ -747,7 +747,7 @@ function buildDimStats(){
     const cur=cs.s>0?(-cs.r/cs.s*100):null;
     const lyv=ls.s>0?(-ls.r/ls.s*100):null;
     out.push({name:k,cur,ly:lyv,yoy:(cur!=null&&lyv!=null)?cur-lyv:null,
-      sales:cs.s,share:totalS>0?cs.s/totalS*100:0,gap:cur!=null?cur-target:null});
+      sales:cs.s,share:totalS>0?cs.s/totalS*100:0,gap:cur!=null?cur-target:null,impact:cur!=null&&totalS>0?(cs.s/totalS*100)*(cur/100):null});
   }
   return {rows:out,target,rrLy};
 }
@@ -757,7 +757,7 @@ function renderDim(){
   const k=S.sortKey, dir=S.sortDir;
   rows.sort((a,b)=>{const x=a[k]==null?-1e9:a[k],y=b[k]==null?-1e9:b[k];return (x-y)*dir;});
   const maxRr=Math.max(...rows.map(r=>r.cur||0),1);
-  const cols=[['name','维度值',0],['cur','本期退货率',1],['ly','去年退货率',1],['yoy','同比(个点)',1],['sales','本期销售额',1],['share','占比',1],['gap','距目标(个点)',1]];
+  const cols=[['name','维度值',0],['cur','本期退货率',1],['ly','去年退货率',1],['yoy','同比(个点)',1],['sales','本期销售额',1],['share','占比',1],['impact','影响权重',1],['gap','距目标(个点)',1]];
   let h='<thead><tr>'+cols.map(c=>`<th data-k="${c[0]}">${c[1]}${S.sortKey===c[0]?(dir<0?' ↓':' ↑'):''}</th>`).join('')+'</tr></thead><tbody>';
   for(const r of rows){
     let flag='';
@@ -772,6 +772,7 @@ function renderDim(){
       <td class="${r.yoy>0?'up':'down'}">${fmtPP(r.yoy)}</td>
       <td>${fmtMoney(r.sales)}</td>
       <td style="color:var(--ink2)">${r.share.toFixed(1)}%</td>
+      <td style="color:var(--amber);font-weight:600">${r.impact!=null?r.impact.toFixed(2):'—'}</td>
       <td class="${r.gap>0?'up':'down'}">${fmtPP(r.gap)}</td>
     </tr>`;
   }
@@ -863,7 +864,7 @@ function buildDimStatsForCards(mature,ly,target){
   for(const k of new Set([...Object.keys(c),...Object.keys(l)])){
     const cs=c[k]||{s:0,r:0}, ls=l[k]||{s:0,r:0};
     const cur=cs.s>0?(-cs.r/cs.s*100):null, lyv=ls.s>0?(-ls.r/ls.s*100):null;
-    out.push({name:k,cur,ly:lyv,yoy:(cur!=null&&lyv!=null)?cur-lyv:null,share:totalS>0?cs.s/totalS*100:0,gap:cur!=null?cur-target:null});
+    out.push({name:k,cur,ly:lyv,yoy:(cur!=null&&lyv!=null)?cur-lyv:null,share:totalS>0?cs.s/totalS*100:0,gap:cur!=null?cur-target:null,impact:cur!=null&&totalS>0?(cs.s/totalS*100)*(cur/100):null});
   }
   return {rows:out};
 }
@@ -1414,7 +1415,7 @@ function renderDatePresets(){
   ];
   el.innerHTML=presets.map(p=>{
     let from=p.days?new Date(d.getTime()-(p.days-1)*86400000).toISOString().slice(0,10):'';
-    return '<button onclick="event.preventDefault();setAnchorDate(''+from+'',''+mx+'')" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:5px;cursor:pointer;white-space:nowrap">'+p.label+'</button>';
+    return '<button onclick="event.preventDefault();setAnchorDate(\x27'+from+'\x27,\x27'+mx+'\x27)" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:5px;cursor:pointer;white-space:nowrap">'+p.label+'</button>';
   }).join('');
 }
 function setAnchorDate(from,to){
