@@ -171,7 +171,7 @@ a{color:var(--blue)}
       <div class="ms-wrap"><button class="ms-btn" id="msPlatformBtn" onclick="toggleMSPanel('msPlatformPanel')">全部平台</button><div class="ms-panel" id="msPlatformPanel"></div></div>
       <div class="ms-wrap"><button class="ms-btn" id="msChannelBtn" onclick="toggleMSPanel('msChannelPanel')">全部渠道</button><div class="ms-panel" id="msChannelPanel"></div></div>
       <div class="ms-wrap"><button class="ms-btn" id="msAnchorBtn" onclick="toggleMSPanel('msAnchorPanel')">全部达人</button><div class="ms-panel" id="msAnchorPanel"></div></div>
-      <span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">筛选后自动更新图表</span>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">筛选后自动更新</span>
     </div>
   </div>
 </header>
@@ -464,7 +464,7 @@ function filterMatureAnchor(rows, cutDate){
   return rows.filter(r=>r.date<=cutDate);
 }
 
-const S={cur:null, ly:null, anchor:null, cal:'phys', target:3, dim:'颜色名称', cardDim:'颜色名称', sortKey:'impact', sortDir:-1, aSortKey:'rate', aSortDir:-1, curRange:'', lyRange:'', anchorRange:'', anchorDateFrom:'', anchorDateTo:'', anchorFilter:new Set(), allAnchors:[], selProduct:new Set(), selPlatform:new Set(), selChannel:new Set(), selAnchor:new Set()};
+const S={cur:null, ly:null, anchor:null, cal:'phys', target:3, dim:'颜色名称', cardDim:'颜色名称', sortKey:'impact', sortDir:-1, aSortKey:'rate', aSortDir:-1, curRange:'', lyRange:'', anchorRange:'', anchorDateFrom:'', anchorDateTo:'', anchorFilter:new Set(), allAnchors:[], selProduct:new Set(), selPlatform:new Set(), selChannel:new Set(), selAnchor:new Set(), dateFrom:'', dateTo:''};
 const SRC_BI='商品销量统计 · BI取数口径';
 const SRC_CG='订单列表 · 婵管家取数口径';
 let trendChart=null, dimChart=null, anchorChart=null, reasonChart=null, genreChart=null, compChart=null;
@@ -592,6 +592,8 @@ function filterRows(rows){
   if(S.selPlatform.size) r=r.filter(x=>S.selPlatform.has(x._platform));
   if(S.selChannel.size) r=r.filter(x=>S.selChannel.has(x._channel));
   if(S.selAnchor.size) r=r.filter(x=>S.selAnchor.has(x['达人名称']));
+  if(S.dateFrom) r=r.filter(x=>x._date>=S.dateFrom);
+  if(S.dateTo) r=r.filter(x=>x._date<=S.dateTo);
   return r;
 }
 function getFiltered(){ return {cur:filterRows(S.cur), ly:filterRows(S.ly)}; }
@@ -615,7 +617,8 @@ function renderAll(){
   const _raw=S.cur, _rawLy=S.ly; if(!_raw||!_rawLy)return;
   if(!PRODUCTS.length){detectProducts();populateFilters();}
   const {cur,ly}=getFiltered();
-  if(!cur.length||!ly.length){document.getElementById('dash').classList.add('hidden');document.getElementById('emptyState').classList.remove('hidden');return;}
+  if(!cur.length){document.getElementById('dash').classList.add('hidden');document.getElementById('emptyState').classList.remove('hidden');return;}
+  const hasLy=ly&&ly.length>0;
   document.getElementById('emptyState').classList.add('hidden');
   document.getElementById('dash').classList.remove('hidden');
   document.getElementById('aiSection').classList.remove('hidden');
@@ -623,7 +626,7 @@ function renderAll(){
   const {max,cut}=maturityCut(cur);
   const mature=cur.filter(r=>r._date<=cut);
   const imm=cur.filter(r=>r._date>cut);
-  const rrCur=rr(mature), rrImm=rr(imm), rrLy=rr(ly);
+  const rrCur=rr(mature), rrImm=rr(imm), rrLy=hasLy?rr(ly):null;
   const target=rrLy!=null?rrLy-S.target:null;
   const yoy=(rrCur!=null&&rrLy!=null)?rrCur-rrLy:null;
   const gap=(rrCur!=null&&target!=null)?rrCur-target:null;
@@ -661,8 +664,8 @@ function renderAll(){
     </div>`).join('');
 
   // 板块周期 / 口径标注（BI取数）
-  document.getElementById('kpiNote').textContent='口径：'+SRC_BI+'　|　对比周期：本期 '+S.curRange+'　ＶＳ　去年 '+S.lyRange;
-  document.getElementById('trendNote').textContent='口径：'+SRC_BI+'　|　本期 '+S.curRange+' vs 去年 '+S.lyRange+'　|　7日滑动平均，虚线段=近15天未成熟';
+  document.getElementById('kpiNote').textContent='口径：'+SRC_BI+'　|　本期 '+S.curRange+(hasLy?'　ＶＳ　去年 '+S.lyRange:'')+(S.dateFrom||S.dateTo?'　|　筛选：'+(S.dateFrom||'最早')+'~'+(S.dateTo||'最晚'):'');
+  document.getElementById('trendNote').textContent='口径：'+SRC_BI+'　|　本期 '+S.curRange+(hasLy?' vs 去年 '+S.lyRange:'')+'　|　7日滑动平均，虚线段=近15天未成熟';
   document.getElementById('dimNote').innerHTML='口径：'+SRC_BI+'　|　本期确定值 vs 去年同期　|　<span style="color:var(--amber)">★ 影响权重 = 销售占比 × 退货率</span>（越高越需要优先优化）';
   document.getElementById('cardNote').textContent='口径：'+SRC_BI+'　|　本期确定值 vs 去年同期 · 综合退货率/占比/同比自动识别';
 
@@ -670,7 +673,7 @@ function renderAll(){
   renderTabs();
   renderDim();
   renderCardTabs();
-  renderCards(mature,ly,imm,rrCur,target);
+  renderCards(mature,hasLy?ly:[],imm,rrCur,target);
   renderComparison();
 }
 
@@ -732,14 +735,15 @@ function renderCardTabs(){
 }
 
 function buildDimStats(){
+  const {cur,ly}=getFiltered();
   const {cut}=maturityCut(S.cur);
-  const mature=S.cur.filter(r=>r._date<=cut);
+  const mature=cur.filter(r=>r._date<=cut);
   const key=S.dim;
   const c={}, l={};
   for(const r of mature){const k=dimValue(r,key);(c[k]=c[k]||{s:0,r:0});c[k].s+=r._sales;c[k].r+=r._ret;}
-  for(const r of S.ly){const k=dimValue(r,key);(l[k]=l[k]||{s:0,r:0});l[k].s+=r._sales;l[k].r+=r._ret;}
+  if(ly&&ly.length)for(const r of ly){const k=dimValue(r,key);(l[k]=l[k]||{s:0,r:0});l[k].s+=r._sales;l[k].r+=r._ret;}
   const totalS=Object.values(c).reduce((a,b)=>a+b.s,0);
-  const rrLy=rr(S.ly), target=rrLy-S.target;
+  const rrLy=ly&&ly.length?rr(ly):null, target=rrLy!=null?rrLy-S.target:null;
   const keys=new Set([...Object.keys(c),...Object.keys(l)]);
   const out=[];
   for(const k of keys){
@@ -826,10 +830,10 @@ function renderCards(mature,ly,imm,rrCur,target){
   for(const r of iStats.rows){
     const m=merged.get(r.name);
     if(m&&r.cur!=null&&m.matureRR!=null&&r.cur>m.matureRR&&r.share>=3){
-      worsen.push({name:r.name,immRR:r.cur,matureRR:m.matureRR,delta:r.cur-m.matureRR,share:r.share});
+      const delta=r.cur-m.matureRR;worsen.push({name:r.name,immRR:r.cur,matureRR:m.matureRR,delta,share:r.share,impactDelta:delta*r.share/100});
     }
   }
-  worsen.sort((a,b)=>b.delta-a.delta);
+  worsen.sort((a,b)=>b.impactDelta-a.impactDelta);  // 按影响权重变化排序
   const worsenTop=worsen.slice(0,5);
 
   // 2. 销售额贡献 Top（配退货率）
@@ -839,9 +843,9 @@ function renderCards(mature,ly,imm,rrCur,target){
   const aboveAvg=[...mStats.rows].filter(r=>r.cur!=null&&r.cur>rrCur&&r.share>=3).sort((a,b)=>(b.cur-rrCur)*b.share-(a.cur-rrCur)*a.share).slice(0,5);
 
   const row2=
-    card('risk','近期恶化预警 · 近15天退货率↑',worsenTop,r=>`
+    card('risk','近期恶化预警 · 影响权重↑（优先关注）',worsenTop,r=>`
       <div class="item"><div class="n">${r.name}<small>成熟期 ${fmtPct(r.matureRR)} → 近15天 ${fmtPct(r.immRR)}</small></div>
-      <div class="m up">${fmtPP(r.delta)}<small>个点</small></div></div>`)+
+      <div class="m up">${fmtPP(r.delta)}<small>个点 · 权重${r.impactDelta.toFixed(2)}</small></div></div>`)+
     card('worse','销售额贡献 Top',salesTop,r=>`
       <div class="item"><div class="n">${r.name}<small>占销售额 ${r.share.toFixed(1)}% · ${fmtMoney(r.sales)}</small></div>
       <div class="m" style="color:var(--ink2)">${fmtPct(r.cur)}<small style="color:var(--ink3)">退货率</small></div></div>`)+
@@ -858,10 +862,11 @@ function renderCards(mature,ly,imm,rrCur,target){
 function buildDimStatsForCards(mature,ly,target){
   const key=S.cardDim, c={}, l={};
   for(const r of mature){const k=dimValue(r,key);(c[k]=c[k]||{s:0,r:0});c[k].s+=r._sales;c[k].r+=r._ret;}
-  for(const r of ly){const k=dimValue(r,key);(l[k]=l[k]||{s:0,r:0});l[k].s+=r._sales;l[k].r+=r._ret;}
+  if(ly&&ly.length)for(const r of ly){const k=dimValue(r,key);(l[k]=l[k]||{s:0,r:0});l[k].s+=r._sales;l[k].r+=r._ret;}
   const totalS=Object.values(c).reduce((a,b)=>a+b.s,0);
   const out=[];
-  for(const k of new Set([...Object.keys(c),...Object.keys(l)])){
+  const allKeys=ly&&ly.length?new Set([...Object.keys(c),...Object.keys(l)]):new Set(Object.keys(c));
+  for(const k of allKeys){
     const cs=c[k]||{s:0,r:0}, ls=l[k]||{s:0,r:0};
     const cur=cs.s>0?(-cs.r/cs.s*100):null, lyv=ls.s>0?(-ls.r/ls.s*100):null;
     out.push({name:k,cur,ly:lyv,yoy:(cur!=null&&lyv!=null)?cur-lyv:null,share:totalS>0?cs.s/totalS*100:0,gap:cur!=null?cur-target:null,impact:cur!=null&&totalS>0?(cs.s/totalS*100)*(cur/100):null});
@@ -1390,6 +1395,20 @@ document.getElementById('aiAnalyzeBtn').onclick=runAIAnalysis;
 
 // 清除缓存按钮
 document.addEventListener('DOMContentLoaded',()=>{
+  // 添加日期筛选
+  (function(){
+    var hin=document.querySelector('.hin');if(!hin)return;
+    var dw=document.createElement('span');dw.style.cssText='display:flex;align-items:center;gap:4px;margin-left:8px';
+    var lbl=document.createElement('span');lbl.style.cssText='font-family:var(--mono);font-size:10px;color:var(--ink3)';lbl.textContent='日期:';
+    var a=document.createElement('input');a.type='date';a.id='filterDateFrom';a.style.cssText='background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:10px;padding:4px;border-radius:5px;width:110px';a.onchange=function(){S.dateFrom=this.value;renderAll();};
+    var s=document.createElement('span');s.style.cssText='color:var(--ink3);font-size:10px';s.textContent='-';
+    var b=document.createElement('input');b.type='date';b.id='filterDateTo';b.style.cssText='background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:10px;padding:4px;border-radius:5px;width:110px';b.onchange=function(){S.dateTo=this.value;renderAll();};
+    var cl=document.createElement('button');cl.textContent='清除';cl.style.cssText='background:var(--panel2);border:1px solid var(--line);color:var(--ink2);font-family:var(--mono);font-size:9px;padding:4px 6px;border-radius:4px;cursor:pointer';cl.onclick=function(){a.value='';b.value='';S.dateFrom='';S.dateTo='';renderAll();};
+    dw.appendChild(lbl);dw.appendChild(a);dw.appendChild(s);dw.appendChild(b);dw.appendChild(cl);hin.appendChild(dw);
+  })();
+
+  
+
   const footer=document.querySelector('footer');
   if(footer){
     const btn=document.createElement('button');
@@ -1475,7 +1494,7 @@ function renderComparison(){
   document.getElementById('compSection').classList.remove('hidden');
   const {cut}=maturityCut(cur);
   const mature=cur.filter(r=>r._date<=cut);
-  const rrCurAll=rr(mature), rrLyAll=rr(ly);
+  const rrCurAll=rr(mature), rrLyAll=hasLy?rr(ly):null;
   const allYoy=(rrCurAll!=null&&rrLyAll!=null)?rrCurAll-rrLyAll:null;
   let kpiHtml='<div class="kpi info"><div class="lab"><span>当前筛选退货率</span></div><div class="v">'+fmtPct(rrCurAll)+'<small> %</small></div><div class="d">同比 '+fmtPP(allYoy)+' 个点 · '+fmtMoney(sumSales(mature))+'元</div></div>';
   if(PRODUCTS.length>=2){
@@ -1522,12 +1541,15 @@ function renderComparison(){
     yoy:(v.curS>0&&v.lyS>0)?((-v.curR/v.curS)-(-v.lyR/v.lyS))*100:null,
     sales:v.curS
   })).filter(x=>x.sales>0);
-  chArr.sort((a,b)=>(b.curRate||0)-(a.curRate||0));
-  document.getElementById('compTable').innerHTML='<table><thead><tr><th>渠道</th><th>平台</th><th>本期退货率</th><th>去年</th><th>同比</th><th>销售额</th></tr></thead><tbody>'
+  // 计算渠道总销售额用于占比
+  const chTotalSales=chArr.reduce((s,c)=>s+c.sales,0);
+  chArr.forEach(c=>{c.share=chTotalSales>0?c.sales/chTotalSales*100:0;c.impact=c.curRate!=null?c.share*c.curRate/100:null;});
+  chArr.sort((a,b)=>(b.impact||0)-(a.impact||0));  // 按影响权重排序
+  document.getElementById('compTable').innerHTML='<table><thead><tr><th>渠道</th><th>平台</th><th>本期退货率</th><th>去年</th><th>同比</th><th>占比</th><th>权重</th><th>销售额</th></tr></thead><tbody>'
     +chArr.slice(0,40).map(c=>{
       const esc=c.name.replace(/'/g,"\\'");
       const color=(c.curRate||0)>15?'var(--red)':(c.curRate||0)>8?'var(--amber)':'var(--green)';
-      return '<tr style="cursor:pointer" onclick="document.getElementById(\'selChannel\').value=\''+esc+'\';S.selChannel=\''+esc+'\';renderAll();"><td class="name">'+(c.name.length>30?c.name.slice(0,28)+'…':c.name)+'</td><td>'+c.platform+'</td><td style="color:'+color+';font-weight:600">'+fmtPct(c.curRate)+'</td><td>'+fmtPct(c.lyRate)+'</td><td style="color:'+((c.yoy||0)>0?'var(--red)':'var(--green)')+'">'+fmtPP(c.yoy)+'</td><td>'+fmtMoney(c.sales)+'</td></tr>';
+      return '<tr style="cursor:pointer" onclick="document.getElementById(\'selChannel\').value=\''+esc+'\';S.selChannel=\''+esc+'\';renderAll();"><td class="name">'+(c.name.length>30?c.name.slice(0,28)+'…':c.name)+'</td><td>'+c.platform+'</td><td style="color:'+color+';font-weight:600">'+fmtPct(c.curRate)+'</td><td>'+fmtPct(c.lyRate)+'</td><td style="color:'+((c.yoy||0)>0?'var(--red)':'var(--green)')+'">'+fmtPP(c.yoy)+'</td><td>'+c.share.toFixed(1)+'%</td><td style="color:var(--amber);font-weight:600">'+(c.impact!=null?c.impact.toFixed(2):'—')+'</td><td>'+fmtMoney(c.sales)+'</td></tr>';
     }).join('')
     +'</tbody></table>';
   document.getElementById('compNote').innerHTML='口径：'+SRC_BI+' · 本期确定值（≤'+cut+'，已成熟） vs 去年同期 · 点击渠道行可筛选<span style="margin-left:16px">|</span><a href="#" onclick="document.getElementById("anchorDetail").classList.toggle("hidden");return false" style="color:var(--blue);font-size:11px">展开/收起达人明细</a>';
@@ -1548,8 +1570,10 @@ function renderComparison(){
     yoy:(v.curS>0&&v.lyS>0)?((-v.curR/v.curS)-(-v.lyR/v.lyS))*100:null,
     sales:v.curS
   })).filter(x=>x.sales>0);
-  aArr.sort((a,b)=>(b.curRate||0)-(a.curRate||0));
-  document.getElementById('anchorDetail').innerHTML='<table><thead><tr><th>达人</th><th>本期退货率</th><th>去年</th><th>同比</th><th>销售额</th></tr></thead><tbody>'
+  const aTotalSales=aArr.reduce((s,c)=>s+c.sales,0);
+  aArr.forEach(c=>{c.share=aTotalSales>0?c.sales/aTotalSales*100:0;c.impact=c.curRate!=null?c.share*c.curRate/100:null;});
+  aArr.sort((a,b)=>(b.impact||0)-(a.impact||0));  // 按影响权重排序
+  document.getElementById('anchorDetail').innerHTML='<table><thead><tr><th>达人</th><th>本期退货率</th><th>去年</th><th>同比</th><th>占比</th><th>权重</th><th>销售额</th></tr></thead><tbody>'
     +aArr.slice(0,50).map(a=>{
       const esc=a.name.replace(/'/g,"\\'");
       const color=(a.curRate||0)>15?'var(--red)':(a.curRate||0)>8?'var(--amber)':'var(--green)';
