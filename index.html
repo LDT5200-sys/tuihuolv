@@ -208,7 +208,7 @@ a{color:var(--blue)}
   <div id="emptyState" class="empty">
     <div class="big">等待数据载入</div>
     <p>
-      载入「本期」与「去年同期」两份销量统计表后，自动出具复盘。<br>
+      载入「本期」与「去年同期」两份销量统计表后，自动出具复盘。<br>数据自动缓存：关闭页面后重新打开无需重复上传。<br>
       口径：退货率 = 退货金额 ÷ 销售额（金额口径）。<br>
       成熟规则：以当前北京时间 − 15 天为界，之前为「确定值」，近 15 天为「预测/收货中」。
     </p>
@@ -396,7 +396,75 @@ const MATURE_DAYS=15;
 const COLORS={ink:'#e6edf3',ink2:'#9aa7b8',ink3:'#67748a',amber:'#f0a020',red:'#f0533d',green:'#3fb950',blue:'#4aa3df',line:'#27313f'};
 
 /* ============== 状态 ============== */
-	const S={cur:null, ly:null, anchor:null, cal:'phys', target:3, dim:'颜色名称', cardDim:'颜色名称', sortKey:'sales', sortDir:-1, aSortKey:'rate', aSortDir:-1, curRange:'', lyRange:'', anchorRange:'', anchorDateFrom:'', anchorDateTo:'', anchorFilter:new Set(), allAnchors:[], selProduct:new Set(), selPlatform:new Set(), selChannel:new Set(), selAnchor:new Set()};
+	
+/* ============== IndexedDB 缓存 ============== */
+const DB_NAME='tuihuolv_cache', DB_VER=1;
+let _db=null;
+function openDB(){
+  return new Promise((res,rej)=>{
+    if(_db){res(_db);return;}
+    const r=indexedDB.open(DB_NAME, DB_VER);
+    r.onupgradeneeded=e=>{
+      const db=e.target.result;
+      if(!db.objectStoreNames.contains('files')) db.createObjectStore('files',{keyPath:'slot'});
+      if(!db.objectStoreNames.contains('meta')) db.createObjectStore('meta',{keyPath:'key'});
+    };
+    r.onsuccess=e=>{_db=e.target.result;res(_db);};
+    r.onerror=()=>rej(r.error);
+  });
+}
+async function saveCache(slot, rows, extra={}){
+  try{
+    const db=await openDB();
+    const tx=db.transaction(['files','meta'],'readwrite');
+    tx.objectStore('files').put({slot, rows, savedAt:new Date().toISOString(), ...extra});
+    tx.objectStore('meta').put({key:'lastSave', time:new Date().toISOString(), slot});
+    await new Promise(r=>{tx.oncomplete=r;});
+    console.log('💾 缓存已存:',slot,rows.length,'行');
+  }catch(e){console.warn('缓存失败:',e);}
+}
+async function loadCache(slot){
+  try{
+    const db=await openDB();
+    const tx=db.transaction('files','readonly');
+    const req=tx.objectStore('files').get(slot);
+    return new Promise((res,rej)=>{req.onsuccess=e=>res(e.target.result);req.onerror=()=>res(null);});
+  }catch(e){return null;}
+}
+async function getCacheMeta(){
+  try{
+    const db=await openDB();
+    const tx=db.transaction('meta','readonly');
+    const req=tx.objectStore('meta').get('lastSave');
+    return new Promise(r=>{req.onsuccess=e=>r(e.target.result);req.onerror=()=>r(null);});
+  }catch(e){return null;}
+}
+async function clearAllCache(){
+  try{
+    const db=await openDB();
+    const tx=db.transaction(['files','meta'],'readwrite');
+    tx.objectStore('files').clear();
+    tx.objectStore('meta').clear();
+    await new Promise(r=>{tx.oncomplete=r;});
+    _db=null;
+    console.log('🗑 缓存已清除');
+  }catch(e){}
+}
+// 合并蝉管家数据：按三方平台单号去重，新覆盖旧
+function mergeAnchorData(oldRows, newRows){
+  if(!oldRows||!oldRows.length)return newRows;
+  const map=new Map();
+  for(const r of oldRows)map.set(r._order||'',r);
+  for(const r of newRows)map.set(r._order||'',r);  // 新覆盖旧
+  return [...map.values()];
+}
+// 过滤成熟期后的数据
+function filterMatureAnchor(rows, cutDate){
+  if(!rows||!cutDate)return rows||[];
+  return rows.filter(r=>r.date<=cutDate);
+}
+
+const S={cur:null, ly:null, anchor:null, cal:'phys', target:3, dim:'颜色名称', cardDim:'颜色名称', sortKey:'sales', sortDir:-1, aSortKey:'rate', aSortDir:-1, curRange:'', lyRange:'', anchorRange:'', anchorDateFrom:'', anchorDateTo:'', anchorFilter:new Set(), allAnchors:[], selProduct:new Set(), selPlatform:new Set(), selChannel:new Set(), selAnchor:new Set()};
 const SRC_BI='商品销量统计 · BI取数口径';
 const SRC_CG='订单列表 · 婵管家取数口径';
 let trendChart=null, dimChart=null, anchorChart=null, reasonChart=null, genreChart=null, compChart=null;
@@ -1033,6 +1101,7 @@ async function handleFile(slot,file){
     let mn=rows[0]._date,mx=rows[0]._date;
     for(const r of rows){if(r._date<mn)mn=r._date;if(r._date>mx)mx=r._date;}
     S[slot]=rows; markOk(slot,true);
+    saveCache(slot,rows,{range:mn+' ~ '+mx});
     S[slot+'Range']=mn+' ~ '+mx;
     setState(slot,'✓ '+rows.length.toLocaleString()+' 行 · '+mn+' ~ '+mx,'good');
     if(S.cur&&S.ly)renderAll();
@@ -1092,6 +1161,12 @@ async function processAnchorFiles(files){
   let amn='',amx=''; let totalGmv=0;
   for(const r of S.anchor){if(r.date){if(!amn||r.date<amn)amn=r.date;if(r.date>amx)amx=r.date;}totalGmv+=r.gmv;}
   S.anchorRange=amn+' ~ '+amx;
+  // 合并旧缓存 + 新数据
+  const oldA=await loadCache('anchor');
+  if(oldA?.rows){S.anchor=mergeAnchorData(oldA.rows,S.anchor);}
+  const {cut}=maturityCut(S.cur||S.anchor);
+  S.anchor=filterMatureAnchor(S.anchor,cut);
+  saveCache('anchor',S.anchor,{range:S.anchorRange,cut});
   const an=new Set(S.anchor.map(r=>r.anchor)).size;
   S.allAnchors=[]; // 重置以触发下拉重建
   console.log('全量汇总: '+S.anchor.length.toLocaleString()+' 单, 成交额 '+fmtMoney(totalGmv)+', 退款额 '+fmtMoney(S.anchor.reduce((s,r)=>s+r.refund,0))+', 主播 '+an+' 个, 日期 '+amn+'~'+amx);
@@ -1276,6 +1351,51 @@ document.getElementById('aiAnalyzeBtn').onclick=runAIAnalysis;
 	    document.getElementById('aiModel').value=btn.dataset.m;
 	  };
 	});
+
+
+// 恢复缓存
+(async function(){
+  try{
+    const cur=await loadCache('cur');
+    const ly=await loadCache('ly');
+    const anchor=await loadCache('anchor');
+    if(cur?.rows){
+      S.cur=cur.rows; S.curRange=cur.range||'';
+      document.getElementById('stCur').textContent='📦 已缓存 '+cur.rows.length+' 行';
+      document.getElementById('stCur').className='good';
+    }
+    if(ly?.rows){
+      S.ly=ly.rows; S.lyRange=ly.range||'';
+      document.getElementById('stLy').textContent='📦 已缓存 '+ly.rows.length+' 行';
+      document.getElementById('stLy').className='good';
+    }
+    if(anchor?.rows){
+      S.anchor=anchor.rows; S.anchorRange=anchor.range||'';
+      document.getElementById('stAnchor').textContent='📦 已缓存 '+anchor.rows.length+' 行';
+      document.getElementById('stAnchor').className='good';
+    }
+    if(cur?.rows&&ly?.rows){
+      document.getElementById('emptyState').classList.add('hidden');
+      document.getElementById('dash').classList.remove('hidden');
+      if(!PRODUCTS.length){detectProducts();populateFilters();}
+      renderAll();
+    }
+    const meta=await getCacheMeta();
+    if(meta) console.log('📦 缓存恢复:',meta.time);
+  }catch(e){console.log('恢复缓存失败:',e);}
+})();
+
+// 清除缓存按钮
+document.addEventListener('DOMContentLoaded',()=>{
+  const footer=document.querySelector('footer');
+  if(footer){
+    const btn=document.createElement('button');
+    btn.textContent='🗑 清除所有缓存';
+    btn.style.cssText='margin-left:12px;background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3);font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer';
+    btn.onclick=async()=>{await clearAllCache();location.reload();};
+    footer.appendChild(btn);
+  }
+});
 
 document.getElementById('tgtInput').oninput=e=>{S.target=num(e.target.value);if(S.cur&&S.ly)renderAll();};
 document.querySelectorAll('#calTabs .tab').forEach(t=>t.onclick=()=>{S.cal=t.dataset.cal;document.querySelectorAll('#calTabs .tab').forEach(x=>x.classList.toggle('active',x===t));renderAnchor();});
