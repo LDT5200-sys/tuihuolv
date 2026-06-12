@@ -302,7 +302,7 @@ a{color:var(--blue)}
       <div id="anchorFilters" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px">
         <div style="display:flex;align-items:center;gap:6px">
           <span style="font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--ink3);white-space:nowrap">时间范围</span>
-          <input type="date" id="anchorDateFrom" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 8px;border-radius:6px;width:130px">
+          <span id="anchorDatePresets" style="display:flex;gap:4px"></span><input type="date" id="anchorDateFrom" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 8px;border-radius:6px;width:130px">
           <span style="color:var(--ink3);font-family:var(--mono);font-size:11px">—</span>
           <input type="date" id="anchorDateTo" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:11px;padding:5px 8px;border-radius:6px;width:130px">
           <button id="anchorDateClear" style="background:var(--panel2);border:1px solid var(--line);color:var(--ink2);font-family:var(--mono);font-size:10px;padding:5px 10px;border-radius:6px;cursor:pointer;letter-spacing:.04em">清除</button>
@@ -970,6 +970,7 @@ function buildAnchorDropdown(){
 
 function renderAnchor(){
   if(!S.anchor)return;
+  renderDatePresets();
   document.getElementById('emptyState').classList.add('hidden');
   document.getElementById('anchorDash').classList.remove('hidden');
 
@@ -1373,6 +1374,7 @@ document.getElementById('aiAnalyzeBtn').onclick=runAIAnalysis;
       S.anchor=anchor.rows; S.anchorRange=anchor.range||'';
       document.getElementById('stAnchor').textContent='📦 已缓存 '+anchor.rows.length+' 行';
       document.getElementById('stAnchor').className='good';
+      renderAnchor();
     }
     if(cur?.rows&&ly?.rows){
       document.getElementById('emptyState').classList.add('hidden');
@@ -1400,6 +1402,27 @@ document.addEventListener('DOMContentLoaded',()=>{
 document.getElementById('tgtInput').oninput=e=>{S.target=num(e.target.value);if(S.cur&&S.ly)renderAll();};
 document.querySelectorAll('#calTabs .tab').forEach(t=>t.onclick=()=>{S.cal=t.dataset.cal;document.querySelectorAll('#calTabs .tab').forEach(x=>x.classList.toggle('active',x===t));renderAnchor();});
 document.getElementById('anchorDateFrom').onchange=()=>{S.anchorDateFrom=document.getElementById('anchorDateFrom').value;renderAnchor();};
+function renderDatePresets(){
+  const el=document.getElementById('anchorDatePresets');
+  if(!el||!S.anchor||!S.anchor.length)return;
+  // Find max date in anchor data
+  let mx=''; for(const r of S.anchor)if(r.date>mx)mx=r.date;
+  if(!mx){el.innerHTML='';return;}
+  const d=new Date(mx+'T00:00:00');
+  const presets=[
+    {label:'7天',days:7},{label:'15天',days:15},{label:'30天',days:30},{label:'全部',days:0}
+  ];
+  el.innerHTML=presets.map(p=>{
+    let from=p.days?new Date(d.getTime()-(p.days-1)*86400000).toISOString().slice(0,10):'';
+    return '<button onclick="event.preventDefault();setAnchorDate(''+from+'',''+mx+'')" style="background:var(--bg);border:1px solid var(--line2);color:var(--ink);font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:5px;cursor:pointer;white-space:nowrap">'+p.label+'</button>';
+  }).join('');
+}
+function setAnchorDate(from,to){
+  document.getElementById('anchorDateFrom').value=from;
+  document.getElementById('anchorDateTo').value=to;
+  S.anchorDateFrom=from; S.anchorDateTo=to;
+  renderAnchor();
+}
 document.getElementById('anchorDateTo').onchange=()=>{S.anchorDateTo=document.getElementById('anchorDateTo').value;renderAnchor();};
 document.getElementById('anchorDateClear').onclick=()=>{document.getElementById('anchorDateFrom').value='';document.getElementById('anchorDateTo').value='';S.anchorDateFrom='';S.anchorDateTo='';renderAnchor();};
 /* ============== 产品/平台/渠道对比逻辑 ============== */
