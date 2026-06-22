@@ -188,7 +188,7 @@ a{color:var(--blue)}
         <div class="pct" id="pcCur"></div>
       </div>
       <div class="drop" id="dropLy" data-slot="ly">
-        <div class="tag">必填 · 去年同期</div>
+        <div class="tag">可选 · 去年同期</div>
         <div class="ttl">去年同期销量统计表</div>
         <div class="opt">同结构、上一年同区间 · BI取数 · .xlsx</div>
         <div class="state" id="stLy">点击或拖入文件</div>
@@ -208,7 +208,7 @@ a{color:var(--blue)}
   <div id="emptyState" class="empty">
     <div class="big">等待数据载入</div>
     <p>
-      载入「本期」与「去年同期」两份销量统计表后，自动出具复盘。<br>数据自动缓存：关闭页面后重新打开无需重复上传。<br>
+      载入「本期」销量统计表后自动出具复盘；补充「去年同期」后解锁同比分析。<br>数据自动缓存：关闭页面后重新打开无需重复上传。<br>
       口径：退货率 = 退货金额 ÷ 销售额（金额口径）。<br>
       成熟规则：以当前北京时间 − 15 天为界，之前为「确定值」，近 15 天为「预测/收货中」。
     </p>
@@ -454,8 +454,9 @@ async function clearAllCache(){
 function mergeAnchorData(oldRows, newRows){
   if(!oldRows||!oldRows.length)return newRows;
   const map=new Map();
-  for(const r of oldRows)map.set(r._order||'',r);
-  for(const r of newRows)map.set(r._order||'',r);  // 新覆盖旧
+  const keyOf=(r,i)=>r._order?('order:'+r._order):('row:'+(r._src||'')+':'+(r._row||i));
+  oldRows.forEach((r,i)=>map.set(keyOf(r,i),r));
+  newRows.forEach((r,i)=>map.set(keyOf(r,i),r));  // 新覆盖旧
   return [...map.values()];
 }
 // 过滤成熟期后的数据
@@ -471,6 +472,7 @@ let trendChart=null, dimChart=null, anchorChart=null, reasonChart=null, genreCha
 
 /* ============== 工具 ============== */
 const num=v=>{const n=parseFloat(v);return isNaN(n)?0:n;};
+const escapeHTML=v=>(''+(v??'')).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 /* 日期解析：兼容 Excel 序列数字 / Date 对象 / 常见字符串格式 */
 function toDateStr(v){
   if(v==null)return'';
@@ -491,8 +493,8 @@ function toDateStr(v){
 const fmtPct=v=>v==null||isNaN(v)?'—':v.toFixed(1)+'%';
 const fmtPP=v=>{if(v==null||isNaN(v))return'—';const s=v>=0?'+':'';return s+v.toFixed(1);};
 const fmtMoney=v=>{if(v>=1e8)return(v/1e8).toFixed(2)+'亿';if(v>=1e4)return(v/1e4).toFixed(1)+'万';return Math.round(v).toLocaleString();};
-function rr(rows){let s=0,r=0;for(const x of rows){s+=x._sales;r+=x._ret;}return s>0?(-r/s*100):null;}
-function sumSales(rows){let s=0;for(const x of rows)s+=x._sales;return s;}
+function rr(rows){let s=0,r=0;for(const x of (rows||[])){s+=x._sales;r+=x._ret;}return s>0?(-r/s*100):null;}
+function sumSales(rows){let s=0;for(const x of (rows||[]))s+=x._sales;return s;}
 function mdKey(d){return d.slice(5);} // MM-DD
 
 /* ============== 解析 ============== */
@@ -540,10 +542,14 @@ function readAnchor(file,onProgress){
         const json=XLSX.utils.sheet_to_json(ws,{defval:null,raw:true});
         if(onProgress)onProgress(0.9);
         const rows=[];
-        for(const o of json){
+        for(const [idx,o] of json.entries()){
           if(o['成交金额']==null&&o['退款金额']==null)continue;
           const dt=toDateStr(o['创建时间']);
+          const orderRaw=o['三方平台单号']??o['订单号']??o['订单编号']??o['订单ID']??o['支付单号']??o['商品订单号'];
           rows.push({
+            _order:orderRaw!=null?(''+orderRaw).replace(/\s/g,''):'',
+            _src:file.name,
+            _row:idx,
             anchor:(o['主播']==null||(''+o['主播']).trim()===''||(''+o['主播']).trim()==='-')?'（无主播/自然流量）':(''+o['主播']).trim(),
             gmv:num(o['成交金额']), refund:num(o['退款金额']),
             rtype:o['退款类型']!=null?(''+o['退款类型']).trim():'未退款',
@@ -587,6 +593,7 @@ function dimValue(row,key){
 
 /* ============== 筛选 ============== */
 function filterRows(rows){
+  if(!rows||!rows.length)return[];
   let r=rows;
   if(S.selProduct.size) r=r.filter(x=>S.selProduct.has(x._product));
   if(S.selPlatform.size) r=r.filter(x=>S.selPlatform.has(x._platform));
@@ -614,7 +621,7 @@ function maturityCut(rows){
   return {max:displayMax,cut};
 }
 function renderAll(){
-  const _raw=S.cur, _rawLy=S.ly; if(!_raw||!_rawLy)return;
+  const _raw=S.cur; if(!_raw)return;
   if(!PRODUCTS.length){detectProducts();populateFilters();}
   const {cur,ly}=getFiltered();
   if(!cur.length){document.getElementById('dash').classList.add('hidden');document.getElementById('emptyState').classList.remove('hidden');return;}
@@ -643,18 +650,18 @@ function renderAll(){
      v:fmtPP(yoy),vs:'个点',
      d:'去年同期 '+fmtPct(rrLy)},
     {cls:'info',lab:'目标退货率',v:fmtPct(target),vs:'%',
-     d:'= 去年 − '+S.target+' 个点'},
+     d:hasLy?'= 去年 − '+S.target+' 个点':'需上传去年同期后计算'},
     {cls:gap!=null&&gap>0?'warn':'good',lab:'距目标',
      v:fmtPP(gap),vs:'个点',pill:gap!=null?(gap>0?['a','未达标']:['g','已达标']):null,
-     d:gap>0?'需再降 '+gap.toFixed(1)+' 个点':'已优于目标'},
+     d:gap==null?'需上传去年同期后计算':(gap>0?'需再降 '+gap.toFixed(1)+' 个点':'已优于目标')},
     {cls:'info',lab:'近15天预测退货率',v:fmtPct(rrImm),vs:'%',
      d:'收货中/未成熟 · 占销售额 '+(sumSales(imm)/salesCur*100).toFixed(0)+'%'},
     {cls:'info',lab:'本期销售额',v:fmtMoney(salesCur),vs:'',
-     d:'去年同期 '+fmtMoney(salesLy)+'元'},
+     d:hasLy?'去年同期 '+fmtMoney(salesLy)+'元':'未载入去年同期'},
     {cls:salesYoy>0?'good':'warn',lab:'销售额同比',v:fmtPP(salesYoy),vs:'%',
-     d:salesYoy>0?'规模扩大':'规模收缩'},
+     d:salesYoy==null?'需上传去年同期后计算':(salesYoy>0?'规模扩大':'规模收缩')},
     {cls:'info',lab:'本期订单行数',v:cur.length.toLocaleString(),vs:'',
-     d:'去年 '+ly.length.toLocaleString()+' 行'},
+     d:hasLy?'去年 '+ly.length.toLocaleString()+' 行':'去年同期未载入'},
   ];
   document.getElementById('kpis').innerHTML=kpis.map(k=>`
     <div class="kpi ${k.cls}">
@@ -751,7 +758,7 @@ function buildDimStats(){
     const cur=cs.s>0?(-cs.r/cs.s*100):null;
     const lyv=ls.s>0?(-ls.r/ls.s*100):null;
     out.push({name:k,cur,ly:lyv,yoy:(cur!=null&&lyv!=null)?cur-lyv:null,
-      sales:cs.s,share:totalS>0?cs.s/totalS*100:0,gap:cur!=null?cur-target:null,impact:cur!=null&&totalS>0?(cs.s/totalS*100)*(cur/100):null});
+      sales:cs.s,share:totalS>0?cs.s/totalS*100:0,gap:(cur!=null&&target!=null)?cur-target:null,impact:cur!=null&&totalS>0?(cs.s/totalS*100)*(cur/100):null});
   }
   return {rows:out,target,rrLy};
 }
@@ -770,7 +777,7 @@ function renderDim(){
     if(r.yoy!=null&&r.yoy<=-2&&r.share>=4)flag+='<span class="flag better">同比下降</span>';
     const barW=r.cur!=null?Math.round(r.cur/maxRr*48):0;
     h+=`<tr>
-      <td class="name">${r.name}${flag}</td>
+      <td class="name">${escapeHTML(r.name)}${flag}</td>
       <td>${fmtPct(r.cur)}<span class="bar" style="width:${barW}px"></span></td>
       <td style="color:var(--ink3)">${fmtPct(r.ly)}</td>
       <td class="${r.yoy>0?'up':'down'}">${fmtPP(r.yoy)}</td>
@@ -810,13 +817,13 @@ function renderCards(mature,ly,imm,rrCur,target){
   };
   const row1=
     card('risk','重点风险 · 高退货且占比大',risk,r=>`
-      <div class="item"><div class="n">${r.name}<small>占销售额 ${r.share.toFixed(1)}%</small></div>
+      <div class="item"><div class="n">${escapeHTML(r.name)}<small>占销售额 ${r.share.toFixed(1)}%</small></div>
       <div class="m" style="color:#ff8a78">${fmtPct(r.cur)}<small style="color:var(--ink3)">距目标 ${fmtPP(r.gap)}</small></div></div>`)+
     card('worse','同比上升最多（退货率↑）',worse,r=>`
-      <div class="item"><div class="n">${r.name}<small>去年 ${fmtPct(r.ly)} → 今年 ${fmtPct(r.cur)}</small></div>
+      <div class="item"><div class="n">${escapeHTML(r.name)}<small>去年 ${fmtPct(r.ly)} → 今年 ${fmtPct(r.cur)}</small></div>
       <div class="m up">${fmtPP(r.yoy)}<small>个点</small></div></div>`)+
     card('better','同比下降最多 / 机会（退货率↓）',better,r=>`
-      <div class="item"><div class="n">${r.name}<small>去年 ${fmtPct(r.ly)} → 今年 ${fmtPct(r.cur)}</small></div>
+      <div class="item"><div class="n">${escapeHTML(r.name)}<small>去年 ${fmtPct(r.ly)} → 今年 ${fmtPct(r.cur)}</small></div>
       <div class="m down">${fmtPP(r.yoy)}<small>个点</small></div></div>`);
 
   // === 纯今年口径卡片 ===
@@ -844,13 +851,13 @@ function renderCards(mature,ly,imm,rrCur,target){
 
   const row2=
     card('risk','近期恶化预警 · 影响权重↑（优先关注）',worsenTop,r=>`
-      <div class="item"><div class="n">${r.name}<small>成熟期 ${fmtPct(r.matureRR)} → 近15天 ${fmtPct(r.immRR)}</small></div>
+      <div class="item"><div class="n">${escapeHTML(r.name)}<small>成熟期 ${fmtPct(r.matureRR)} → 近15天 ${fmtPct(r.immRR)}</small></div>
       <div class="m up">${fmtPP(r.delta)}<small>个点 · 权重${r.impactDelta.toFixed(2)}</small></div></div>`)+
     card('worse','销售额贡献 Top',salesTop,r=>`
-      <div class="item"><div class="n">${r.name}<small>占销售额 ${r.share.toFixed(1)}% · ${fmtMoney(r.sales)}</small></div>
+      <div class="item"><div class="n">${escapeHTML(r.name)}<small>占销售额 ${r.share.toFixed(1)}% · ${fmtMoney(r.sales)}</small></div>
       <div class="m" style="color:var(--ink2)">${fmtPct(r.cur)}<small style="color:var(--ink3)">退货率</small></div></div>`)+
     card('risk','高出均值 · 退货率显著偏高',aboveAvg,r=>`
-      <div class="item"><div class="n">${r.name}<small>均值 ${fmtPct(rrCur)} · 占销售额 ${r.share.toFixed(1)}%</small></div>
+      <div class="item"><div class="n">${escapeHTML(r.name)}<small>均值 ${fmtPct(rrCur)} · 占销售额 ${r.share.toFixed(1)}%</small></div>
       <div class="m" style="color:#ff8a78">${fmtPct(r.cur)}<small style="color:var(--ink3)">高出 ${fmtPP(r.cur-rrCur)} 个点</small></div></div>`);
 
   document.getElementById('cards').innerHTML=
@@ -869,7 +876,7 @@ function buildDimStatsForCards(mature,ly,target){
   for(const k of allKeys){
     const cs=c[k]||{s:0,r:0}, ls=l[k]||{s:0,r:0};
     const cur=cs.s>0?(-cs.r/cs.s*100):null, lyv=ls.s>0?(-ls.r/ls.s*100):null;
-    out.push({name:k,cur,ly:lyv,yoy:(cur!=null&&lyv!=null)?cur-lyv:null,share:totalS>0?cs.s/totalS*100:0,gap:cur!=null?cur-target:null,impact:cur!=null&&totalS>0?(cs.s/totalS*100)*(cur/100):null});
+    out.push({name:k,cur,ly:lyv,yoy:(cur!=null&&lyv!=null)?cur-lyv:null,share:totalS>0?cs.s/totalS*100:0,gap:(cur!=null&&target!=null)?cur-target:null,impact:cur!=null&&totalS>0?(cs.s/totalS*100)*(cur/100):null});
   }
   return {rows:out};
 }
@@ -946,8 +953,8 @@ function buildAnchorDropdown(){
   for(const name of all){
     const checked=sel.size===0||!sel.has(name);
     h+=`<label style="display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--ink);white-space:nowrap" onmouseover="this.style.background='var(--panel)'" onmouseout="this.style.background='transparent'">
-      <input type="checkbox" value="${name.replace(/"/g,'&quot;')}" ${checked?'checked':''} style="accent-color:var(--accent);cursor:pointer">
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${name}</span>
+      <input type="checkbox" value="${escapeHTML(name)}" ${checked?'checked':''} style="accent-color:var(--accent);cursor:pointer">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${escapeHTML(name)}</span>
     </label>`;
   }
   dd.innerHTML=h;
@@ -1042,7 +1049,7 @@ function renderAnchor(){
   let h='<thead><tr>'+acols.map(c=>`<th data-k="${c[0]}">${c[1]}${S.aSortKey===c[0]?(S.aSortDir<0?' ↓':' ↑'):''}</th>`).join('')+'</tr></thead><tbody>';
   for(const r of arr){
     const hot=r.rate!=null&&rateSel!=null&&r.rate>rateSel*1.1;
-    h+=`<tr><td class="name">${r.name}${hot?'<span class="flag risk">高于均值</span>':''}</td>
+    h+=`<tr><td class="name">${escapeHTML(r.name)}${hot?'<span class="flag risk">高于均值</span>':''}</td>
       <td>${r.n.toLocaleString()}</td><td>${fmtMoney(r.gmv)}</td><td>${fmtMoney(r.refund)}</td>
       <td class="${hot?'up':''}">${fmtPct(r.rate)}<span class="bar" style="width:${Math.round((r.rate||0)/maxRate*46)}px"></span></td></tr>`;
   }
@@ -1111,10 +1118,10 @@ async function handleFile(slot,file){
     saveCache(slot,rows,{range:mn+' ~ '+mx});
     S[slot+'Range']=mn+' ~ '+mx;
     setState(slot,'✓ '+rows.length.toLocaleString()+' 行 · '+mn+' ~ '+mx,'good');
-    if(S.cur&&S.ly)renderAll();
+    if(S.cur)renderAll();
     if(S.anchor)renderAnchor();
   }catch(err){
-    setState(slot,'✗ '+(err.message||'解析失败'),'err'); markOk(slot,false);
+    setState(slot,'✗ '+escapeHTML(err.message||'解析失败'),'err'); markOk(slot,false);
   }
 }
 function wire(slot){
@@ -1151,14 +1158,14 @@ async function processAnchorFiles(files){
     try{
       setPct('anchor',i/files.length);
       const rows=await readAnchor(files[i],()=>{});
-      if(!rows.length){errors.push(files[i].name+': 无数据');continue;}
+      if(!rows.length){errors.push(escapeHTML(files[i].name)+': 无数据');continue;}
       const fGmv=rows.reduce((s,r)=>s+r.gmv,0);
       const fRefund=rows.reduce((s,r)=>s+r.refund,0);
       const fDates=new Set(rows.map(r=>r.date).filter(Boolean));
       fileStats.push({文件:files[i].name, 行数:rows.length, 成交额:fmtMoney(fGmv), 退款额:fmtMoney(fRefund), 日期范围:[...fDates].sort()[0]+'~'+[...fDates].sort().pop()});
       S.anchor=S.anchor.concat(rows);
       totalRows+=rows.length;
-    }catch(err){errors.push(files[i].name+': '+(err.message||'解析失败'));}
+    }catch(err){errors.push(escapeHTML(files[i].name)+': '+escapeHTML(err.message||'解析失败'));}
   }
   if(fileStats.length)console.table(fileStats);
   setPct('anchor',1); markOk('anchor',totalRows>0);
@@ -1180,7 +1187,7 @@ async function processAnchorFiles(files){
   if(errors.length)console.warn('解析失败:',errors);
   setState('anchor','✓ '+S.anchor.length.toLocaleString()+' 单 · 成交额 <b>'+fmtMoney(totalGmv)+'</b> · 主播 '+an+' 个'+(errors.length?' · ⚠ '+errors.length+' 个文件失败':'')+' <a href="#" onclick="event.preventDefault();clearAnchorData();" style="color:var(--red);font-size:10px;margin-left:6px;text-decoration:none">清除</a>',errors.length?'err':'good');
   renderAnchor();
-  if(S.cur&&S.ly)renderAll();
+  if(S.cur)renderAll();
 }
 function clearAnchorData(){
   S.anchor=null; S.allAnchors=[]; S.anchorFilter.clear();
@@ -1230,7 +1237,9 @@ function compileAnalysisReport(){
   const {max,cut}=maturityCut(S.cur);
   const mature=S.cur.filter(r=>r._date<=cut);
   const imm=S.cur.filter(r=>r._date>cut);
-  const rrCur=rr(mature), rrImm=rr(imm), rrLy=rr(S.ly);
+  const lyRows=S.ly||[];
+  const hasLy=lyRows.length>0;
+  const rrCur=rr(mature), rrImm=rr(imm), rrLy=hasLy?rr(lyRows):null;
   const target=rrLy!=null?rrLy-S.target:null;
   const gap=rrCur!=null&&target!=null?rrCur-target:null;
   const yoy=rrCur!=null&&rrLy!=null?rrCur-rrLy:null;
@@ -1240,13 +1249,13 @@ function compileAnalysisReport(){
   let report='# 退货率复盘数据报告\n\n';
   report+='## 一、核心指标（金额口径）\n';
   report+='- 本期确定退货率：'+fmtPct(rrCur)+'（≤'+cut+'，已成熟）\n';
-  report+='- 去年同期退货率：'+fmtPct(rrLy)+'\n';
-  report+='- 同比变化：'+fmtPP(yoy)+' 个点\n';
-  report+='- 目标退货率：'+fmtPct(target)+'（去年 − '+S.target+' 个点）\n';
-  report+='- 距目标差距：'+fmtPP(gap)+' 个点'+(gap>0?'（未达标）':'（已达标）')+'\n';
-  report+='- 近15天预测退货率：'+fmtPct(rrImm)+'（未成熟，占销售额 '+(sumSales(imm)/salesCur*100).toFixed(0)+'%）\n';
-  report+='- 本期销售额：'+fmtMoney(salesCur)+'，同比 '+fmtPP(salesYoy)+'%\n';
-  report+='- 数据周期：'+S.curRange+'（对比 '+S.lyRange+'）\n\n';
+  report+='- 去年同期退货率：'+(hasLy?fmtPct(rrLy):'未上传')+'\n';
+  report+='- 同比变化：'+(hasLy?fmtPP(yoy)+' 个点':'未上传去年同期，暂不计算')+'\n';
+  report+='- 目标退货率：'+(hasLy?fmtPct(target)+'（去年 − '+S.target+' 个点）':'未上传去年同期，暂不计算')+'\n';
+  report+='- 距目标差距：'+(gap==null?'未上传去年同期，暂不计算':fmtPP(gap)+' 个点'+(gap>0?'（未达标）':'（已达标）'))+'\n';
+  report+='- 近15天预测退货率：'+fmtPct(rrImm)+'（未成熟，占销售额 '+(salesCur>0?(sumSales(imm)/salesCur*100).toFixed(0):'0')+'%）\n';
+  report+='- 本期销售额：'+fmtMoney(salesCur)+(hasLy?'，同比 '+fmtPP(salesYoy)+'%':'')+'\n';
+  report+='- 数据周期：'+S.curRange+(hasLy?'（对比 '+S.lyRange+'）':'')+'\n\n';
 
   // 逐维度分析
   for(const dim of DIMS){
@@ -1254,7 +1263,7 @@ function compileAnalysisReport(){
     if(!usable)continue;
     const c={}, l={};
     for(const r of mature){const k=dimValue(r,dim.key);(c[k]=c[k]||{s:0,r:0});c[k].s+=r._sales;c[k].r+=r._ret;}
-    for(const r of S.ly){const k=dimValue(r,dim.key);(l[k]=l[k]||{s:0,r:0});l[k].s+=r._sales;l[k].r+=r._ret;}
+    for(const r of lyRows){const k=dimValue(r,dim.key);(l[k]=l[k]||{s:0,r:0});l[k].s+=r._sales;l[k].r+=r._ret;}
     const tS=Object.values(c).reduce((a,b)=>a+b.s,0);
     const rows=[];
     for(const k of new Set([...Object.keys(c),...Object.keys(l)])){
@@ -1382,7 +1391,7 @@ document.getElementById('aiAnalyzeBtn').onclick=runAIAnalysis;
       document.getElementById('stAnchor').className='good';
       renderAnchor();
     }
-    if(cur?.rows&&ly?.rows){
+    if(cur?.rows){
       document.getElementById('emptyState').classList.add('hidden');
       document.getElementById('dash').classList.remove('hidden');
       if(!PRODUCTS.length){detectProducts();populateFilters();}
@@ -1491,6 +1500,7 @@ function renderComparison(){
   if(!S.cur||!S.ly)return;
   const {cur,ly}=getFiltered();
   if(!cur.length||!ly.length){document.getElementById('compSection').classList.add('hidden');return;}
+  const hasLy=ly&&ly.length>0;
   document.getElementById('compSection').classList.remove('hidden');
   const {cut}=maturityCut(cur);
   const mature=cur.filter(r=>r._date<=cut);
@@ -1502,7 +1512,7 @@ function renderComparison(){
       const pc=mature.filter(r=>r._product===p), pl=ly.filter(r=>r._product===p);
       const rp=rr(pc), rl=rr(pl), dy=(rp!=null&&rl!=null)?rp-rl:null;
       const s=p.includes('秘纤')?'秘纤':p.includes('秘战')?'秘战':p;
-      kpiHtml+='<div class="kpi '+(dy!=null&&dy>0?'warn':'good')+'"><div class="lab"><span>'+s+' 退货率</span></div><div class="v">'+fmtPct(rp)+'<small> %</small></div><div class="d">同比 '+fmtPP(dy)+' 个点 · 去年 '+fmtPct(rl)+'</div></div>';
+      kpiHtml+='<div class="kpi '+(dy!=null&&dy>0?'warn':'good')+'"><div class="lab"><span>'+escapeHTML(s)+' 退货率</span></div><div class="v">'+fmtPct(rp)+'<small> %</small></div><div class="d">同比 '+fmtPP(dy)+' 个点 · 去年 '+fmtPct(rl)+'</div></div>';
     }
   }
   document.getElementById('compKpis').innerHTML=kpiHtml;
@@ -1547,12 +1557,15 @@ function renderComparison(){
   chArr.sort((a,b)=>(b.impact||0)-(a.impact||0));  // 按影响权重排序
   document.getElementById('compTable').innerHTML='<table><thead><tr><th>渠道</th><th>平台</th><th>本期退货率</th><th>去年</th><th>同比</th><th>占比</th><th>权重</th><th>销售额</th></tr></thead><tbody>'
     +chArr.slice(0,40).map(c=>{
-      const esc=c.name.replace(/'/g,"\\'");
       const color=(c.curRate||0)>15?'var(--red)':(c.curRate||0)>8?'var(--amber)':'var(--green)';
-      return '<tr style="cursor:pointer" onclick="document.getElementById(\'selChannel\').value=\''+esc+'\';S.selChannel=\''+esc+'\';renderAll();"><td class="name">'+(c.name.length>30?c.name.slice(0,28)+'…':c.name)+'</td><td>'+c.platform+'</td><td style="color:'+color+';font-weight:600">'+fmtPct(c.curRate)+'</td><td>'+fmtPct(c.lyRate)+'</td><td style="color:'+((c.yoy||0)>0?'var(--red)':'var(--green)')+'">'+fmtPP(c.yoy)+'</td><td>'+c.share.toFixed(1)+'%</td><td style="color:var(--amber);font-weight:600">'+(c.impact!=null?c.impact.toFixed(2):'—')+'</td><td>'+fmtMoney(c.sales)+'</td></tr>';
+      return '<tr style="cursor:pointer" data-channel="'+escapeHTML(c.name)+'"><td class="name">'+escapeHTML(c.name.length>30?c.name.slice(0,28)+'…':c.name)+'</td><td>'+escapeHTML(c.platform)+'</td><td style="color:'+color+';font-weight:600">'+fmtPct(c.curRate)+'</td><td>'+fmtPct(c.lyRate)+'</td><td style="color:'+((c.yoy||0)>0?'var(--red)':'var(--green)')+'">'+fmtPP(c.yoy)+'</td><td>'+c.share.toFixed(1)+'%</td><td style="color:var(--amber);font-weight:600">'+(c.impact!=null?c.impact.toFixed(2):'—')+'</td><td>'+fmtMoney(c.sales)+'</td></tr>';
     }).join('')
     +'</tbody></table>';
-  document.getElementById('compNote').innerHTML='口径：'+SRC_BI+' · 本期确定值（≤'+cut+'，已成熟） vs 去年同期 · 点击渠道行可筛选<span style="margin-left:16px">|</span><a href="#" onclick="document.getElementById("anchorDetail").classList.toggle("hidden");return false" style="color:var(--blue);font-size:11px">展开/收起达人明细</a>';
+  document.querySelectorAll('#compTable tr[data-channel]').forEach(tr=>{
+    tr.onclick=()=>{S.selChannel=new Set([tr.dataset.channel]);updateChannelPanel();updateAnchorPanel();renderAll();};
+  });
+  document.getElementById('compNote').innerHTML='口径：'+SRC_BI+' · 本期确定值（≤'+cut+'，已成熟） vs 去年同期 · 点击渠道行可筛选<span style="margin-left:16px">|</span><a href="#" id="toggleAnchorDetail" style="color:var(--blue);font-size:11px">展开/收起达人明细</a>';
+  document.getElementById('toggleAnchorDetail').onclick=e=>{e.preventDefault();document.getElementById('anchorDetail').classList.toggle('hidden');};
 
   // 达人明细（当前筛选条件下的达人退货率）
   const anchorData={};
@@ -1575,8 +1588,8 @@ function renderComparison(){
   aArr.sort((a,b)=>(b.impact||0)-(a.impact||0));  // 按影响权重排序
   document.getElementById('anchorDetail').innerHTML='<table><thead><tr><th>达人</th><th>本期退货率</th><th>去年</th><th>同比</th><th>占比</th><th>权重</th><th>销售额</th></tr></thead><tbody>'
     +aArr.slice(0,50).map(a=>{
-      const esc=a.name.replace(/'/g,"\\'");
       const color=(a.curRate||0)>15?'var(--red)':(a.curRate||0)>8?'var(--amber)':'var(--green)';
+      return '<tr><td class="name">'+escapeHTML(a.name)+'</td><td style="color:'+color+';font-weight:600">'+fmtPct(a.curRate)+'</td><td>'+fmtPct(a.lyRate)+'</td><td style="color:'+((a.yoy||0)>0?'var(--red)':'var(--green)')+'">'+fmtPP(a.yoy)+'</td><td>'+a.share.toFixed(1)+'%</td><td style="color:var(--amber);font-weight:600">'+(a.impact!=null?a.impact.toFixed(2):'—')+'</td><td>'+fmtMoney(a.sales)+'</td></tr>';
     }).join('')
     +'</tbody></table>';
 }
@@ -1595,7 +1608,7 @@ function fillMSPanel(pid, opts, selSet, bid, defLabel, cb){
   for(var i=0;i<opts.length;i++){
     var o=opts[i];
     var ck=selSet.has(o.value)?' checked':'';
-    h+='<label class="ms-item"><input type="checkbox" value="'+o.value.replace(/'/g,'&#39;')+'"'+ck+' onchange="MS_chk(this,\''+bid+'\',\''+defLabel+'\')">'+o.label+'</label>';
+    h+='<label class="ms-item"><input type="checkbox" value="'+escapeHTML(o.value)+'"'+ck+' onchange="MS_chk(this,\''+bid+'\',\''+defLabel+'\')">'+escapeHTML(o.label)+'</label>';
   }
   p.innerHTML=h;
 }
