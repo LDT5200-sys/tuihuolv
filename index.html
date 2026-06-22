@@ -572,16 +572,128 @@ function findBIHeaderInSheet(ws){
   }
   return best;
 }
+function zipFindEntry(bytes,path){
+  const dv=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  let eocd=-1;
+  for(let i=bytes.length-22;i>=Math.max(0,bytes.length-66000);i--){
+    if(dv.getUint32(i,true)===0x06054b50){eocd=i;break;}
+  }
+  if(eocd<0)throw new Error('无法读取 xlsx 压缩目录');
+  const total=dv.getUint16(eocd+10,true);
+  let pos=dv.getUint32(eocd+16,true);
+  const dec=new TextDecoder();
+  for(let i=0;i<total;i++){
+    if(dv.getUint32(pos,true)!==0x02014b50)break;
+    const method=dv.getUint16(pos+10,true);
+    const compSize=dv.getUint32(pos+20,true);
+    const nameLen=dv.getUint16(pos+28,true), extraLen=dv.getUint16(pos+30,true), commentLen=dv.getUint16(pos+32,true);
+    const localOff=dv.getUint32(pos+42,true);
+    const name=dec.decode(bytes.slice(pos+46,pos+46+nameLen));
+    if(name===path){
+      const ln=dv.getUint16(localOff+26,true), le=dv.getUint16(localOff+28,true);
+      const start=localOff+30+ln+le;
+      return {method,bytes:bytes.slice(start,start+compSize)};
+    }
+    pos+=46+nameLen+extraLen+commentLen;
+  }
+  return null;
+}
+async function zipInflate(entry){
+  if(!entry)return null;
+  if(entry.method===0)return entry.bytes;
+  if(entry.method!==8)throw new Error('不支持的 xlsx 压缩方式: '+entry.method);
+  const ds=new DecompressionStream('deflate-raw');
+  const stream=new Blob([entry.bytes]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+const xmlUnesc=s=>(''+(s??'')).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&apos;/g,"'");
+function attrOf(s,n){const m=s.match(new RegExp(n+'="([^"]*)"'));return m?m[1]:'';}
+function colIdx(ref){
+  const m=(''+ref).match(/^([A-Z]+)/i); if(!m)return -1;
+  let n=0; for(const ch of m[1].toUpperCase())n=n*26+ch.charCodeAt(0)-64;
+  return n-1;
+}
+function cellValueFromXml(attrs,inner,shared){
+  const t=attrOf(attrs,'t');
+  if(t==='inlineStr'){
+    const parts=[...inner.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(m=>xmlUnesc(m[1]));
+    return parts.join('');
+  }
+  const vm=inner.match(/<v[^>]*>([\s\S]*?)<\/v>/);
+  if(!vm)return '';
+  const v=xmlUnesc(vm[1]);
+  return t==='s'?(shared[+v]||''):v;
+}
+function parseSharedStrings(xml){
+  if(!xml)return [];
+  return [...xml.matchAll(/<si[^>]*>([\s\S]*?)<\/si>/g)].map(si=>
+    [...si[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlUnesc(t[1])).join('')
+  );
+}
+function parseXmlRow(rowXml,shared){
+  const row=[];
+  const re=/<c\b([^>]*)>([\s\S]*?)<\/c>/g; let m;
+  while((m=re.exec(rowXml))){
+    const c=colIdx(attrOf(m[1],'r'));
+    if(c>=0)row[c]=cellValueFromXml(m[1],m[2],shared);
+  }
+  return row;
+}
+async function readXlsxXmlFallback(bytes,onProgress){
+  if(typeof DecompressionStream==='undefined')throw new Error('浏览器不支持大文件兜底解压，请换 Chrome 最新版或先另存为 CSV');
+  if(onProgress)onProgress(0.58);
+  const sheetEntry=zipFindEntry(bytes,'xl/worksheets/sheet1.xml');
+  if(!sheetEntry)throw new Error('xlsx 内未找到 xl/worksheets/sheet1.xml');
+  const sharedEntry=zipFindEntry(bytes,'xl/sharedStrings.xml');
+  const [sheetBytes,sharedBytes]=await Promise.all([zipInflate(sheetEntry),zipInflate(sharedEntry)]);
+  if(onProgress)onProgress(0.7);
+  const dec=new TextDecoder();
+  const shared=parseSharedStrings(sharedBytes?dec.decode(sharedBytes):'');
+  const xml=dec.decode(sheetBytes);
+  let header=null, headerCells=null, cols=null, rows=[];
+  const re=/<row\b[^>]*>([\s\S]*?)<\/row>/g; let m, idx=0;
+  while((m=re.exec(xml))){
+    const row=parseXmlRow(m[1],shared);
+    if(!header){
+      const headers=nonEmptyHeaders(row);
+      if(headers.length){
+        const c=resolveBIColumns(headers), miss=missingBICols(c);
+        if(!miss.length){header=headers; headerCells=row; cols=c;}
+      }
+      idx++; continue;
+    }
+    const o={};
+    for(let i=0;i<headerCells.length;i++){
+      const h=headerCells[i];
+      if(h!=null&&(''+h).trim()!=='')o[''+h]=row[i]??null;
+    }
+    const d=o[cols.date]; if(d==null||d==='')continue;
+    rows.push({
+      _date:toDateStr(d), _sales:num(o[cols.sales]), _ret:num(o[cols.ret]),
+      _order:cols.order&&o[cols.order]!=null?(''+o[cols.order]).replace(/\s/g,''):null,
+      ['颜色名称']:o['颜色名称'],['尺码名称']:o['尺码名称'],['铁血区域']:o['铁血区域'],
+      ['省份']:o['省份'],['达人名称']:o['达人名称'],['流量来源']:o['流量来源'],
+      ['盈利体系名称']:cols.channel&&o[cols.channel]!=null?(''+o[cols.channel]).trim():'',['商品名称']:o[cols.product]!=null?(''+o[cols.product]).trim():'',
+      _platform:platformOf(cols.channel&&o[cols.channel]!=null?(''+o[cols.channel]).trim():''), _product:o[cols.product]!=null?(''+o[cols.product]).trim():'', _channel:cols.channel&&o[cols.channel]!=null?(''+o[cols.channel]).trim():''
+    });
+    idx++;
+    if(idx%50000===0&&onProgress)onProgress(Math.min(0.98,0.7+idx/700000*0.28));
+  }
+  if(!header)throw new Error('XML 兜底解析仍未找到 BI 表头');
+  if(onProgress)onProgress(1);
+  return rows;
+}
 
 /* ============== 解析 ============== */
 function readXlsx(file,onProgress){
   return new Promise((res,rej)=>{
     const fr=new FileReader();
     fr.onprogress=e=>{if(e.lengthComputable&&onProgress)onProgress(e.loaded/e.total*0.5);};
-    fr.onload=e=>{
+    fr.onload=async e=>{
       try{
         if(onProgress)onProgress(0.55);
-        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',dense:true});
+        const fileBytes=new Uint8Array(e.target.result);
+        const wb=XLSX.read(fileBytes,{type:'array',dense:true});
         if(onProgress)onProgress(0.75);
         let json=[], cols=null;
         let bestHeader=null;
@@ -597,9 +709,9 @@ function readXlsx(file,onProgress){
           if(!cols&&found)cols=found.cols;
         }
         if(!cols||missingBICols(cols).length){
-          const headers=bestHeader?.headers||[];
-          const miss=bestHeader?.miss||missingBICols(cols||{});
-          throw new Error('缺少字段：'+miss.join('、')+'；检测到的表头：'+(headers.length?headers.join(' / '):'空'));
+          console.warn('SheetJS 未识别 BI 表头，尝试 XML 兜底解析');
+          res(await readXlsxXmlFallback(fileBytes,onProgress));
+          return;
         }
         if(onProgress)onProgress(0.9);
         const rows=[];
