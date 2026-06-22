@@ -496,6 +496,38 @@ const fmtMoney=v=>{if(v>=1e8)return(v/1e8).toFixed(2)+'亿';if(v>=1e4)return(v/1
 function rr(rows){let s=0,r=0;for(const x of (rows||[])){s+=x._sales;r+=x._ret;}return s>0?(-r/s*100):null;}
 function sumSales(rows){let s=0;for(const x of (rows||[]))s+=x._sales;return s;}
 function mdKey(d){return d.slice(5);} // MM-DD
+function normHeader(v){
+  return (''+(v??'')).replace(/\s+/g,'').replace(/[()（）]/g,'').trim().toLowerCase();
+}
+function findCol(headers, candidates){
+  const normalized=new Map(headers.map(h=>[normHeader(h),h]));
+  for(const c of candidates){
+    const hit=normalized.get(normHeader(c));
+    if(hit!=null)return hit;
+  }
+  return null;
+}
+function resolveBIColumns(headers){
+  return {
+    date:findCol(headers,[COL.date,'订单日期','日期','下单日期','订单时间']),
+    sales:findCol(headers,[COL.sales,'销售金额','成交金额','实付金额','支付金额','GMV']),
+    ret:findCol(headers,[COL.ret,'退货金额','退款金额','退货额','退款额']),
+    qty:findCol(headers,[COL.qty,'销量','销售数量','成交数量']),
+    retq:findCol(headers,[COL.retq,'退货数量','退款数量']),
+    order:findCol(headers,[COL.order,'订单号','订单编号','订单ID','支付单号','商品订单号']),
+    product:findCol(headers,[COL.product,'商品','产品名称','款式名称']),
+    channel:findCol(headers,[COL.channel,'渠道','店铺','平台店铺','盈利体系']),
+    anchor:findCol(headers,[COL.anchor,'主播','主播名称','带货达人']),
+  };
+}
+function missingBICols(cols){
+  const miss=[];
+  if(!cols.date)miss.push('订单日期-天维度');
+  if(!cols.sales)miss.push('销售额');
+  if(!cols.ret)miss.push('退货(金额)');
+  if(!cols.product)miss.push('商品名称');
+  return miss;
+}
 
 /* ============== 解析 ============== */
 function readXlsx(file,onProgress){
@@ -506,21 +538,38 @@ function readXlsx(file,onProgress){
       try{
         if(onProgress)onProgress(0.55);
         const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-        const ws=wb.Sheets[wb.SheetNames[0]];
         if(onProgress)onProgress(0.75);
-        const json=XLSX.utils.sheet_to_json(ws,{defval:null,raw:true});
+        let json=[], cols=null;
+        for(const name of wb.SheetNames){
+          const ws=wb.Sheets[name];
+          const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});
+          const headers=(aoa[0]||[]).filter(v=>v!=null&&(''+v).trim()!=='').map(v=>''+v);
+          const c=resolveBIColumns(headers);
+          if(!missingBICols(c).length){
+            json=XLSX.utils.sheet_to_json(ws,{defval:null,raw:true});
+            cols=c;
+            break;
+          }
+          if(!cols)cols=c;
+        }
+        if(!cols||missingBICols(cols).length){
+          const ws=wb.Sheets[wb.SheetNames[0]];
+          const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});
+          const headers=(aoa[0]||[]).filter(v=>v!=null&&(''+v).trim()!=='').map(v=>''+v);
+          throw new Error('缺少字段：'+missingBICols(cols||{}).join('、')+'；当前表头：'+headers.join(' / '));
+        }
         if(onProgress)onProgress(0.9);
         const rows=[];
         for(const o of json){
-          const d=o[COL.date]; if(d==null)continue;
+          const d=o[cols.date]; if(d==null)continue;
           const ds=toDateStr(d);
           rows.push({
-            _date:ds, _sales:num(o[COL.sales]), _ret:num(o[COL.ret]),
-            _order:o[COL.order]!=null?(''+o[COL.order]).replace(/\s/g,''):null,
+            _date:ds, _sales:num(o[cols.sales]), _ret:num(o[cols.ret]),
+            _order:cols.order&&o[cols.order]!=null?(''+o[cols.order]).replace(/\s/g,''):null,
             ['颜色名称']:o['颜色名称'],['尺码名称']:o['尺码名称'],['铁血区域']:o['铁血区域'],
             ['省份']:o['省份'],['达人名称']:o['达人名称'],['流量来源']:o['流量来源'],
-            ['盈利体系名称']:o[COL.channel]!=null?(''+o[COL.channel]).trim():'',['商品名称']:o[COL.product]!=null?(''+o[COL.product]).trim():'',
-            _platform:platformOf(o[COL.channel]!=null?(''+o[COL.channel]).trim():''), _product:o[COL.product]!=null?(''+o[COL.product]).trim():'', _channel:o[COL.channel]!=null?(''+o[COL.channel]).trim():''
+            ['盈利体系名称']:cols.channel&&o[cols.channel]!=null?(''+o[cols.channel]).trim():'',['商品名称']:o[cols.product]!=null?(''+o[cols.product]).trim():'',
+            _platform:platformOf(cols.channel&&o[cols.channel]!=null?(''+o[cols.channel]).trim():''), _product:o[cols.product]!=null?(''+o[cols.product]).trim():'', _channel:cols.channel&&o[cols.channel]!=null?(''+o[cols.channel]).trim():''
           });
         }
         if(onProgress)onProgress(1);
@@ -1111,7 +1160,7 @@ async function handleFile(slot,file){
   try{
     setState(slot,'<span class="loader"></span>解析中…','');
     const rows=await readXlsx(file,p=>setPct(slot,p));
-    if(!rows.length||rows[0]._sales===undefined)throw new Error('未识别到销售额列');
+    if(!rows.length)throw new Error('未识别到有效数据行，请检查订单日期列是否有数据');
     let mn=rows[0]._date,mx=rows[0]._date;
     for(const r of rows){if(r._date<mn)mn=r._date;if(r._date>mx)mx=r._date;}
     S[slot]=rows; markOk(slot,true);
