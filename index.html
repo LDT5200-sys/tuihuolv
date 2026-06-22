@@ -545,6 +545,33 @@ function findBIHeader(aoa){
   }
   return best;
 }
+function cellText(ws,r,c){
+  const denseRow=(ws['!data']&&ws['!data'][r])||ws[r];
+  const cell=(denseRow&&denseRow[c])||ws[XLSX.utils.encode_cell({r,c})];
+  if(!cell)return null;
+  if(cell.w!=null)return cell.w;
+  if(cell.v!=null)return cell.v;
+  return null;
+}
+function findBIHeaderInSheet(ws){
+  if(!ws||!ws['!ref'])return null;
+  const range=XLSX.utils.decode_range(ws['!ref']);
+  let best=null;
+  const maxRow=Math.min(range.e.r,range.s.r+29);
+  const maxCol=Math.min(range.e.c,80);
+  for(let r=range.s.r;r<=maxRow;r++){
+    const row=[];
+    for(let c=range.s.c;c<=maxCol;c++)row.push(cellText(ws,r,c));
+    const headers=nonEmptyHeaders(row);
+    if(!headers.length)continue;
+    const cols=resolveBIColumns(headers);
+    const miss=missingBICols(cols);
+    const score=4-miss.length;
+    if(!best||score>best.score)best={row:r,headers,cols,miss,score};
+    if(!miss.length)return best;
+  }
+  return best;
+}
 
 /* ============== 解析 ============== */
 function readXlsx(file,onProgress){
@@ -554,14 +581,13 @@ function readXlsx(file,onProgress){
     fr.onload=e=>{
       try{
         if(onProgress)onProgress(0.55);
-        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',dense:true});
         if(onProgress)onProgress(0.75);
         let json=[], cols=null;
         let bestHeader=null;
         for(const name of wb.SheetNames){
           const ws=wb.Sheets[name];
-          const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});
-          const found=findBIHeader(aoa);
+          const found=findBIHeaderInSheet(ws);
           if(found&&(!bestHeader||found.score>bestHeader.score))bestHeader=found;
           if(found&&!found.miss.length){
             json=XLSX.utils.sheet_to_json(ws,{defval:null,raw:true,range:found.row});
