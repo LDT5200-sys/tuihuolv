@@ -528,6 +528,23 @@ function missingBICols(cols){
   if(!cols.product)miss.push('商品名称');
   return miss;
 }
+function nonEmptyHeaders(row){
+  return (row||[]).filter(v=>v!=null&&(''+v).trim()!=='').map(v=>''+v);
+}
+function findBIHeader(aoa){
+  let best=null;
+  const max=Math.min(30,aoa.length);
+  for(let i=0;i<max;i++){
+    const headers=nonEmptyHeaders(aoa[i]);
+    if(!headers.length)continue;
+    const cols=resolveBIColumns(headers);
+    const miss=missingBICols(cols);
+    const score=4-miss.length;
+    if(!best||score>best.score)best={row:i,headers,cols,miss,score};
+    if(!miss.length)return best;
+  }
+  return best;
+}
 
 /* ============== 解析 ============== */
 function readXlsx(file,onProgress){
@@ -540,23 +557,23 @@ function readXlsx(file,onProgress){
         const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
         if(onProgress)onProgress(0.75);
         let json=[], cols=null;
+        let bestHeader=null;
         for(const name of wb.SheetNames){
           const ws=wb.Sheets[name];
           const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});
-          const headers=(aoa[0]||[]).filter(v=>v!=null&&(''+v).trim()!=='').map(v=>''+v);
-          const c=resolveBIColumns(headers);
-          if(!missingBICols(c).length){
-            json=XLSX.utils.sheet_to_json(ws,{defval:null,raw:true});
-            cols=c;
+          const found=findBIHeader(aoa);
+          if(found&&(!bestHeader||found.score>bestHeader.score))bestHeader=found;
+          if(found&&!found.miss.length){
+            json=XLSX.utils.sheet_to_json(ws,{defval:null,raw:true,range:found.row});
+            cols=found.cols;
             break;
           }
-          if(!cols)cols=c;
+          if(!cols&&found)cols=found.cols;
         }
         if(!cols||missingBICols(cols).length){
-          const ws=wb.Sheets[wb.SheetNames[0]];
-          const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});
-          const headers=(aoa[0]||[]).filter(v=>v!=null&&(''+v).trim()!=='').map(v=>''+v);
-          throw new Error('缺少字段：'+missingBICols(cols||{}).join('、')+'；当前表头：'+headers.join(' / '));
+          const headers=bestHeader?.headers||[];
+          const miss=bestHeader?.miss||missingBICols(cols||{});
+          throw new Error('缺少字段：'+miss.join('、')+'；检测到的表头：'+(headers.length?headers.join(' / '):'空'));
         }
         if(onProgress)onProgress(0.9);
         const rows=[];
