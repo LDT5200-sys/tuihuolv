@@ -796,18 +796,33 @@ function dimValue(row,key){
 }
 
 /* ============== 筛选 ============== */
-function filterRows(rows){
+function datasetYear(rows){
+  if(!rows||!rows.length)return null;
+  let min='';
+  for(const r of rows)if(r._date&&(!min||r._date<min))min=r._date;
+  return min?+min.slice(0,4):null;
+}
+function alignDateToRows(date,rows){
+  if(!date)return '';
+  const y=datasetYear(rows);
+  return y?String(y)+date.slice(4):date;
+}
+function filterRows(rows,from=S.dateFrom,to=S.dateTo){
   if(!rows||!rows.length)return[];
   let r=rows;
   if(S.selProduct.size) r=r.filter(x=>S.selProduct.has(x._product));
   if(S.selPlatform.size) r=r.filter(x=>S.selPlatform.has(x._platform));
   if(S.selChannel.size) r=r.filter(x=>S.selChannel.has(x._channel));
   if(S.selAnchor.size) r=r.filter(x=>S.selAnchor.has(x['达人名称']));
-  if(S.dateFrom) r=r.filter(x=>x._date>=S.dateFrom);
-  if(S.dateTo) r=r.filter(x=>x._date<=S.dateTo);
+  if(from) r=r.filter(x=>x._date>=from);
+  if(to) r=r.filter(x=>x._date<=to);
   return r;
 }
-function getFiltered(){ return {cur:filterRows(S.cur), ly:filterRows(S.ly)}; }
+function getFiltered(){
+  const lyFrom=alignDateToRows(S.dateFrom,S.ly);
+  const lyTo=alignDateToRows(S.dateTo,S.ly);
+  return {cur:filterRows(S.cur,S.dateFrom,S.dateTo), ly:filterRows(S.ly,lyFrom,lyTo), lyFrom, lyTo};
+}
 
 /* ============== 渲染 ============== */
 function maturityCut(rows){
@@ -827,7 +842,7 @@ function maturityCut(rows){
 function renderAll(){
   const _raw=S.cur; if(!_raw)return;
   if(!PRODUCTS.length){detectProducts();populateFilters();}
-  const {cur,ly}=getFiltered();
+  const {cur,ly,lyFrom,lyTo}=getFiltered();
   if(!cur.length){document.getElementById('dash').classList.add('hidden');document.getElementById('emptyState').classList.remove('hidden');return;}
   const hasLy=ly&&ly.length>0;
   document.getElementById('emptyState').classList.add('hidden');
@@ -875,8 +890,9 @@ function renderAll(){
     </div>`).join('');
 
   // 板块周期 / 口径标注（BI取数）
-  document.getElementById('kpiNote').textContent='口径：'+SRC_BI+'　|　本期 '+S.curRange+(hasLy?'　ＶＳ　去年 '+S.lyRange:'')+(S.dateFrom||S.dateTo?'　|　筛选：'+(S.dateFrom||'最早')+'~'+(S.dateTo||'最晚'):'');
-  document.getElementById('trendNote').textContent='口径：'+SRC_BI+'　|　本期 '+S.curRange+(hasLy?' vs 去年 '+S.lyRange:'')+'　|　7日滑动平均，虚线段=近15天未成熟';
+  const dateNote=(S.dateFrom||S.dateTo)?'　|　筛选：本期 '+(S.dateFrom||'最早')+'~'+(S.dateTo||'最晚')+(hasLy?'；去年对齐 '+(lyFrom||'最早')+'~'+(lyTo||'最晚'):''):'';
+  document.getElementById('kpiNote').textContent='口径：'+SRC_BI+'　|　本期 '+S.curRange+(hasLy?'　ＶＳ　去年 '+S.lyRange:'')+dateNote;
+  document.getElementById('trendNote').textContent='口径：'+SRC_BI+'　|　本期 '+S.curRange+(hasLy?' vs 去年 '+S.lyRange:'')+dateNote+'　|　7日滑动平均，虚线段=近15天未成熟';
   document.getElementById('dimNote').innerHTML='口径：'+SRC_BI+'　|　本期确定值 vs 去年同期　|　<span style="color:var(--amber)">★ 影响权重 = 销售占比 × 退货率</span>（越高越需要优先优化）';
   document.getElementById('cardNote').textContent='口径：'+SRC_BI+'　|　本期确定值 vs 去年同期 · 综合退货率/占比/同比自动识别';
 
@@ -1438,16 +1454,16 @@ document.getElementById('aiClearKey').onclick=()=>{
 };
 
 function compileAnalysisReport(){
-  const {max,cut}=maturityCut(S.cur);
-  const mature=S.cur.filter(r=>r._date<=cut);
-  const imm=S.cur.filter(r=>r._date>cut);
-  const lyRows=S.ly||[];
+  const {cur:curRows,ly:lyRows,lyFrom,lyTo}=getFiltered();
+  const {max,cut}=maturityCut(curRows);
+  const mature=curRows.filter(r=>r._date<=cut);
+  const imm=curRows.filter(r=>r._date>cut);
   const hasLy=lyRows.length>0;
   const rrCur=rr(mature), rrImm=rr(imm), rrLy=hasLy?rr(lyRows):null;
   const target=rrLy!=null?rrLy-S.target:null;
   const gap=rrCur!=null&&target!=null?rrCur-target:null;
   const yoy=rrCur!=null&&rrLy!=null?rrCur-rrLy:null;
-  const salesCur=sumSales(S.cur), salesLy=sumSales(S.ly);
+  const salesCur=sumSales(curRows), salesLy=sumSales(lyRows);
   const salesYoy=salesLy>0?(salesCur/salesLy-1)*100:null;
 
   let report='# 退货率复盘数据报告\n\n';
@@ -1459,11 +1475,11 @@ function compileAnalysisReport(){
   report+='- 距目标差距：'+(gap==null?'未上传去年同期，暂不计算':fmtPP(gap)+' 个点'+(gap>0?'（未达标）':'（已达标）'))+'\n';
   report+='- 近15天预测退货率：'+fmtPct(rrImm)+'（未成熟，占销售额 '+(salesCur>0?(sumSales(imm)/salesCur*100).toFixed(0):'0')+'%）\n';
   report+='- 本期销售额：'+fmtMoney(salesCur)+(hasLy?'，同比 '+fmtPP(salesYoy)+'%':'')+'\n';
-  report+='- 数据周期：'+S.curRange+(hasLy?'（对比 '+S.lyRange+'）':'')+'\n\n';
+  report+='- 数据周期：'+S.curRange+(hasLy?'（对比 '+S.lyRange+'）':'')+(S.dateFrom||S.dateTo?'；筛选本期 '+(S.dateFrom||'最早')+'~'+(S.dateTo||'最晚')+(hasLy?'，去年对齐 '+(lyFrom||'最早')+'~'+(lyTo||'最晚'):''):'')+'\n\n';
 
   // 逐维度分析
   for(const dim of DIMS){
-    const usable=dimUsable(S.cur,dim.key);
+    const usable=dimUsable(curRows,dim.key);
     if(!usable)continue;
     const c={}, l={};
     for(const r of mature){const k=dimValue(r,dim.key);(c[k]=c[k]||{s:0,r:0});c[k].s+=r._sales;c[k].r+=r._ret;}
