@@ -431,6 +431,18 @@ async function loadCache(slot){
     return new Promise((res,rej)=>{req.onsuccess=e=>res(e.target.result);req.onerror=()=>res(null);});
   }catch(e){return null;}
 }
+async function deleteCache(slot){
+  try{
+    const db=await openDB();
+    const tx=db.transaction('files','readwrite');
+    tx.objectStore('files').delete(slot);
+    await new Promise(r=>{tx.oncomplete=r;});
+  }catch(e){}
+}
+function biCacheUsable(cache){
+  const r=cache?.rows?.[0];
+  return !!(r&&r._qty!==undefined&&r._retq!==undefined);
+}
 async function getCacheMeta(){
   try{
     const db=await openDB();
@@ -1602,15 +1614,23 @@ document.getElementById('aiAnalyzeBtn').onclick=runAIAnalysis;
     const cur=await loadCache('cur');
     const ly=await loadCache('ly');
     const anchor=await loadCache('anchor');
-    if(cur?.rows){
+    if(cur?.rows&&biCacheUsable(cur)){
       S.cur=cur.rows; S.curRange=cur.range||'';
       document.getElementById('stCur').textContent='📦 已缓存 '+cur.rows.length+' 行';
       document.getElementById('stCur').className='good';
+    }else if(cur?.rows){
+      await deleteCache('cur');
+      document.getElementById('stCur').textContent='数量口径已更新，请重新上传本期数据';
+      document.getElementById('stCur').className='state';
     }
-    if(ly?.rows){
+    if(ly?.rows&&biCacheUsable(ly)){
       S.ly=ly.rows; S.lyRange=ly.range||'';
       document.getElementById('stLy').textContent='📦 已缓存 '+ly.rows.length+' 行';
       document.getElementById('stLy').className='good';
+    }else if(ly?.rows){
+      await deleteCache('ly');
+      document.getElementById('stLy').textContent='数量口径已更新，请重新上传去年同期数据';
+      document.getElementById('stLy').className='state';
     }
     if(anchor?.rows){
       S.anchor=anchor.rows; S.anchorRange=anchor.range||'';
@@ -1618,7 +1638,7 @@ document.getElementById('aiAnalyzeBtn').onclick=runAIAnalysis;
       document.getElementById('stAnchor').className='good';
       renderAnchor();
     }
-    if(cur?.rows){
+    if(S.cur){
       document.getElementById('emptyState').classList.add('hidden');
       document.getElementById('dash').classList.remove('hidden');
       if(!PRODUCTS.length){detectProducts();populateFilters();}
